@@ -1,0 +1,277 @@
+openapi: 3.0.3
+info:
+  title: NFC Crypto Payment API
+  version: 0.0.1
+  description: API for cryptocurrency payments via NFC
+servers:
+  - url: https://api.nfc-pay.com/v1
+    description: Production server
+  - url: http://localhost:3000/v1
+    description: Local development server
+
+tags:
+  - name: Wallet Management
+    description: Connect and manage crypto wallets
+  - name: Transactions
+    description: Handle payment transactions
+  - name: Sessions
+    description: NFC payment session management
+
+paths:
+  /wallets/connect:
+    post:
+      tags: [Wallet Management]
+      summary: Connect crypto wallet
+      description: Link user's cryptocurrency wallet using WalletConnect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WalletConnectRequest'
+            example:
+              wallet_address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+              network: "ethereum"
+              signature: "0x88df016429689c079f3b2f6ad39fa052532c56795b733da78a91ebe6a713944b"
+      responses:
+        '200':
+          description: Wallet successfully connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /wallets:
+    get:
+      tags: [Wallet Management]
+      summary: Get connected wallets
+      description: Retrieve list of user's connected wallets
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of wallets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Wallet'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sessions/init:
+    post:
+      tags: [Sessions]
+      summary: Create NFC session
+      description: Initialize new NFC payment session (terminal-side)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionRequest'
+            example:
+              merchant_id: "store_123"
+              amount: 50.0
+              currency: "USDC"
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          description: Invalid merchant ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /transactions/init:
+    post:
+      tags: [Transactions]
+      summary: Initiate payment
+      description: Start NFC payment transaction
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+            example:
+              session_id: "abc123"
+              wallet_address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+              signed_tx_data: "0x88df016429689c079f3b2f6ad39fa052532c56795b733da78a91ebe6a713944b"
+      responses:
+        '200':
+          description: Transaction initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '401':
+          description: Session expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /transactions/{tx_id}:
+    get:
+      tags: [Transactions]
+      summary: Get transaction status
+      description: Check status of payment transaction
+      parameters:
+        - name: tx_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Transaction status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionStatus'
+        '404':
+          description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    WalletConnectRequest:
+      type: object
+      required:
+        - wallet_address
+        - network
+        - signature
+      properties:
+        wallet_address:
+          type: string
+          example: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
+        network:
+          type: string
+          enum: [ethereum, solana, bsc]
+        signature:
+          type: string
+          example: "0x88df016429689c079f3b2f6ad39fa052532c56795b733da78a91ebe6a713944b"
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expires_in:
+          type: integer
+          example: 3600
+
+    Wallet:
+      type: object
+      properties:
+        address:
+          type: string
+        network:
+          type: string
+        connected_at:
+          type: string
+          format: date-time
+
+    SessionRequest:
+      type: object
+      required:
+        - merchant_id
+        - amount
+        - currency
+      properties:
+        merchant_id:
+          type: string
+        amount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+          enum: [USDC, USDT, ETH, SOL]
+
+    Session:
+      type: object
+      properties:
+        session_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    TransactionRequest:
+      type: object
+      required:
+        - session_id
+        - wallet_address
+        - signed_tx_data
+      properties:
+        session_id:
+          type: string
+        wallet_address:
+          type: string
+        signed_tx_data:
+          type: string
+
+    Transaction:
+      type: object
+      properties:
+        tx_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, confirmed, failed]
+        tx_hash:
+          type: string
+
+    TransactionStatus:
+      type: object
+      properties:
+        tx_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        block_number:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+          example: "Invalid signature"
