@@ -1,4 +1,4 @@
-### **Users**  
+## Users
 System users are cryptocurrency wallet owners who use the application for NFC-based payments  
 
 | Name          | Data Type        | Description                        | Constraints                     |  
@@ -19,7 +19,7 @@ System users are cryptocurrency wallet owners who use the application for NFC-ba
 
 ---
 
-### **Wallets**  
+## Wallets
 Cryptocurrency wallets linked to users.  
 
 | Name         | Data Type        | Description                                     | Constraints                     |  
@@ -42,8 +42,8 @@ Cryptocurrency wallets linked to users.
 
 ---
 
-### **Transactions**  
-**Description:** Records of payments initiated via NFC.  
+## Transactions
+Records of payments initiated via NFC.  
 
 | Name         | Data Type        | Description                                   | Constraints                     |  
 |-------------|-----------------|-----------------------------------------------|---------------------------------|  
@@ -71,8 +71,8 @@ Cryptocurrency wallets linked to users.
 
 ---
 
-### **NFC Sessions**  
-**Description:** Temporary sessions created by the terminal for payment processing.  
+## NFC Sessions
+Temporary sessions created by the terminal for payment processing.  
 
 | Name         | Data Type        | Description                       | Constraints                     |  
 |-------------|-----------------|-----------------------------------|---------------------------------|  
@@ -92,7 +92,7 @@ Cryptocurrency wallets linked to users.
 
 ---
 
-### **Gas Pool**  
+## Gas Pool 
 A reserve fund for covering gas fees for transactions.  
 
 | Name        | Data Type        | Description                            | Constraints                     |  
@@ -113,15 +113,122 @@ A reserve fund for covering gas fees for transactions.
 
 ---
 
-### **Entity Relationships**  
+## Entity Relationships 
 - **User ↔ Wallet:**   
-  `Users.user_id` → `Wallets.user_id`.  
+  `Users.user_id` → `Wallets.user_id`
 
 - **User ↔ Transaction:**  
-  `Users.user_id` → `Transactions.user_id`.  
+  `Users.user_id` → `Transactions.user_id`
 
 - **Session ↔ Transaction:**  
-   `Sessions.session_id` → `Transactions.session_id`.  
+   `Sessions.session_id` → `Transactions.session_id`
 
 - **Merchant ↔ Gas Pool:**  
-   `Sessions.merchant_id` → `GasPool.merchant_id`.  
+   `Sessions.merchant_id` → `GasPool.merchant_id`
+```scss
+Users (1) → (N) Wallets  
+Users (1) → (N) Transactions  
+Sessions (1) → (N) Transactions  
+GasPool (1) → (N) Sessions (via merchant_id)
+```
+
+---
+
+## SQL Tables
+### Wallets
+```sql
+CREATE TABLE Users (  
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
+    email VARCHAR(255) UNIQUE NOT NULL,  
+    phone VARCHAR(15) UNIQUE NOT NULL,  
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP  
+);
+```
+- gen_random_uuid() generates a unique UUID for user_id
+- UNIQUE ensures no duplicate emails or phone numbers
+- created_at is automatically set to the record creation time
+
+---
+
+### Users
+```sql
+CREATE TABLE Wallets (  
+    wallet_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
+    user_id UUID NOT NULL REFERENCES Users(user_id) ON DELETE CASCADE,  
+    address VARCHAR(42) NOT NULL,  
+    network VARCHAR(50) NOT NULL CHECK (network IN ('ethereum', 'solana', 'bsc')),  
+    connected_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP  
+);
+```
+- REFERENCES Users(user_id) is a foreign key linking the wallet to a user
+- ON DELETE CASCADE removes wallets when the associated user is deleted
+- CHECK restricts allowed blockchain networks
+
+---
+
+### Sessions
+```sql
+CREATE TABLE Sessions (  
+    session_id VARCHAR(50) PRIMARY KEY,  
+    merchant_id VARCHAR(50) NOT NULL,  
+    amount DECIMAL(18, 8) NOT NULL CHECK (amount > 0),  
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL  
+);
+```
+- CHECK (amount > 0) prevents zero or negative amounts
+- expires_at stores the session expiration time (TTL)
+
+---
+
+### Transactions
+```sql
+CREATE TABLE Transactions (  
+    tx_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
+    user_id UUID NOT NULL REFERENCES Users(user_id) ON DELETE CASCADE,  
+    session_id VARCHAR(50) NOT NULL REFERENCES Sessions(session_id) ON DELETE CASCADE,  
+    amount DECIMAL(18, 8) NOT NULL CHECK (amount > 0),  
+    currency VARCHAR(10) NOT NULL CHECK (currency IN ('USDC', 'USDT', 'ETH', 'SOL')),  
+    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'confirmed', 'failed')),  
+    tx_hash VARCHAR(66) UNIQUE,  
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP  
+);
+```
+- CHECK (currency IN (...)) restricts the list of valid currencies
+- tx_hash is unique to prevent duplicate transactions
+
+---
+
+### GasPool
+```sql
+CREATE TABLE GasPool (  
+    pool_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  
+    merchant_id VARCHAR(50) NOT NULL,  
+    balance DECIMAL(18, 8) NOT NULL CHECK (balance >= 0),  
+    currency VARCHAR(10) NOT NULL CHECK (currency IN ('ETH', 'SOL', 'BNB'))  
+);
+```
+- CHECK (balance >= 0) prevents a negative balance.
+
+---
+
+### Indexes
+Speed up data search and filtering
+
+1. For the Transactions Table
+
+```sql
+CREATE INDEX idx_transactions_tx_hash ON Transactions(tx_hash);  
+CREATE INDEX idx_transactions_status ON Transactions(status);  
+CREATE INDEX idx_transactions_created_at ON Transactions(created_at);
+``` 
+
+2. For the Sessions Table
+```sql
+CREATE INDEX idx_sessions_expires_at ON Sessions(expires_at);  
+```
+
+3. For the Wallets Table
+```sql
+CREATE INDEX idx_wallets_address ON Wallets(address);
+```
+
