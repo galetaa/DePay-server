@@ -1,277 +1,380 @@
 openapi: 3.0.3
 info:
   title: NFC Crypto Payment API
-  version: 0.0.1
-  description: API for cryptocurrency payments via NFC
+  version: "1.0.0"
+  description: >
+    API for the NFC crypto payment system. This API provides:
+      - User registration (first name, last name, email, password) with JWT issuance.
+      - User login with JWT.
+      - Submission of new wallet information (wallet name, coin-address mapping, and ERC-20 tokens).
+      - Retrieval of all wallet IDs for a user with coin/token addresses.
+      - Retrieval of wallet balances (including tokens).
+      - Submission of a signed transaction (raw hex string).
+      - Retrieval of transaction status.
 servers:
-  - url: https://api.nfc-pay.com/v1
+  - url: https://api.yourdomain.com
     description: Production server
-  - url: http://localhost:3000/v1
-    description: Local development server
-
-tags:
-  - name: Wallet Management
-    description: Connect and manage crypto wallets
-  - name: Transactions
-    description: Handle payment transactions
-  - name: Sessions
-    description: NFC payment session management
 
 paths:
-  /wallets/connect:
+  /auth/register:
     post:
-      tags: [Wallet Management]
-      summary: Connect crypto wallet
-      description: Link user's cryptocurrency wallet using WalletConnect
+      summary: "User Registration"
+      description: "Register a new user with first name, last name, email, and password. Returns a user ID and a JWT."
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WalletConnectRequest'
-            example:
-              wallet_address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
-              network: "ethereum"
-              signature: "0x88df016429689c079f3b2f6ad39fa052532c56795b733da78a91ebe6a713944b"
+              $ref: "#/components/schemas/RegisterRequest"
       responses:
         '200':
-          description: Wallet successfully connected
+          description: "User successfully registered"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
+                $ref: "#/components/schemas/RegisterResponse"
         '400':
-          description: Invalid signature
+          description: "Registration error"
+
+  /auth/login:
+    post:
+      summary: "User Login"
+      description: "Authenticate user with email and password. Returns a JWT."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        '200':
+          description: "Login successful"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: "#/components/schemas/LoginResponse"
+        '401':
+          description: "Authentication error"
 
   /wallets:
-    get:
-      tags: [Wallet Management]
-      summary: Get connected wallets
-      description: Retrieve list of user's connected wallets
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: List of wallets
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Wallet'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /sessions/init:
     post:
-      tags: [Sessions]
-      summary: Create NFC session
-      description: Initialize new NFC payment session (terminal-side)
+      summary: "Add New Wallet"
+      description: "Submit new wallet information. The request includes the user ID, wallet name, a mapping of coin identifiers to wallet addresses, and supported ERC-20 tokens."
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SessionRequest'
-            example:
-              merchant_id: "store_123"
-              amount: 50.0
-              currency: "USDC"
+              $ref: "#/components/schemas/AddWalletRequest"
+      security:
+        - BearerAuth: []  # Correct reference to security definition
       responses:
         '200':
-          description: Session created
+          description: "Wallet successfully added"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Session'
+                $ref: "#/components/schemas/AddWalletResponse"
         '400':
-          description: Invalid merchant ID
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          description: "Error adding wallet"
 
-  /transactions/init:
+  /wallets/list:
     post:
-      tags: [Transactions]
-      summary: Initiate payment
-      description: Start NFC payment transaction
-      security:
-        - BearerAuth: []
+      summary: "Retrieve All Wallets"
+      description: "Get all wallet IDs and names associated with a user, along with coin and token addresses."
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TransactionRequest'
-            example:
-              session_id: "abc123"
-              wallet_address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
-              signed_tx_data: "0x88df016429689c079f3b2f6ad39fa052532c56795b733da78a91ebe6a713944b"
-      responses:
-        '200':
-          description: Transaction initiated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Transaction'
-        '401':
-          description: Session expired
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /transactions/{tx_id}:
-    get:
-      tags: [Transactions]
-      summary: Get transaction status
-      description: Check status of payment transaction
-      parameters:
-        - name: tx_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+              $ref: "#/components/schemas/WalletListRequest"
       security:
-        - BearerAuth: []
+        - BearerAuth: []  # Correct reference to security definition
       responses:
         '200':
-          description: Transaction status
+          description: "List of wallets retrieved"
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TransactionStatus'
+                $ref: "#/components/schemas/WalletListResponse"
+        '400':
+          description: "Error retrieving wallet list"
+
+  /wallets/balance:
+    post:
+      summary: "Get Wallet Balance"
+      description: "Retrieve the current balances for all coins (including ERC-20 tokens) in a specific wallet."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalletBalanceRequest"
+      security:
+        - BearerAuth: []  # Correct reference to security definition
+      responses:
+        '200':
+          description: "Wallet balance retrieved"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletBalanceResponse"
+        '400':
+          description: "Error retrieving balance"
+
+  /transactions:
+    post:
+      summary: "Submit Signed Transaction"
+      description: "Submit a signed transaction (raw hex string). The server validates the transaction and returns a transaction ID and status."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendTransactionRequest"
+      security:
+        - BearerAuth: []  # Correct reference to security definition
+      responses:
+        '200':
+          description: "Transaction accepted for processing"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendTransactionResponse"
+        '400':
+          description: "Error submitting transaction"
+
+  /transactions/status:
+    post:
+      summary: "Get Transaction Status"
+      description: "Retrieve the status of a transaction by providing its unique transaction ID in the request body."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionStatusRequest"
+      security:
+        - BearerAuth: []  # Correct reference to security definition
+      responses:
+        '200':
+          description: "Transaction status retrieved"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionStatusResponse"
         '404':
-          description: Transaction not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          description: "Transaction not found"
 
 components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - fname
+        - lname
+        - email
+        - password
+      properties:
+        fname:
+          type: string
+          example: "John"
+        lname:
+          type: string
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        password:
+          type: string
+          format: password
+          example: "StrongPassword123!"
+    RegisterResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          example: "user123"
+        token:
+          type: string
+          description: "JWT for authentication"
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        password:
+          type: string
+          format: password
+          example: "StrongPassword123!"
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        user_id:
+          type: string
+          example: "user123"
+    AddWalletRequest:
+      type: object
+      required:
+        - user_id
+        - wallet_name
+        - coins
+      properties:
+        user_id:
+          type: string
+          example: "user123"
+        wallet_name:
+          type: string
+          example: "Main Wallet"
+        coins:
+          type: object
+          description: "Mapping of coin identifier to wallet address"
+          additionalProperties:
+            type: string
+          example:
+            ETH: "0xabc123..."
+            BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+        tokens:
+          type: object
+          description: "Mapping of ERC-20 token identifiers to wallet addresses"
+          additionalProperties:
+            type: string
+          example:
+            DAI: "0x1234567890abcdef1234567890abcdef12345678"
+    AddWalletResponse:
+      type: object
+      properties:
+        wallet_id:
+          type: string
+          example: "wallet456"
+        message:
+          type: string
+          example: "Wallet successfully added"
+    WalletListRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+          example: "user123"
+    WalletListResponse:
+      type: object
+      properties:
+        wallets:
+          type: array
+          items:
+            type: object
+            properties:
+              wallet_id:
+                type: string
+                example: "wallet456"
+              wallet_name:
+                type: string
+                example: "Main Wallet"
+              coins:
+                type: object
+                description: "Coins and their addresses in the wallet"
+                additionalProperties:
+                  type: string
+                example:
+                  ETH: "0xabc123..."
+                  BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+              tokens:
+                type: object
+                description: "ERC-20 tokens and their addresses"
+                additionalProperties:
+                  type: string
+                example:
+                  DAI: "0x1234567890abcdef1234567890abcdef12345678"
+    WalletBalanceRequest:
+      type: object
+      required:
+        - wallet_id
+      properties:
+        wallet_id:
+          type: string
+          example: "wallet456"
+    WalletBalanceResponse:
+      type: object
+      properties:
+        wallet_id:
+          type: string
+          example: "wallet456"
+        balances:
+          type: object
+          description: "Mapping of coin identifier to balance"
+          additionalProperties:
+            type: string
+          example:
+            ETH: "1.2345"
+            BTC: "0.0567"
+            DAI: "500.00"
+    SendTransactionRequest:
+      type: object
+      required:
+        - user_id
+        - transaction
+      properties:
+        user_id:
+          type: string
+          example: "user123"
+        transaction:
+          type: string
+          description: "Signed transaction in raw hex string format"
+          example: "0xf86c80850ba43b740083015f9094..."
+    SendTransactionResponse:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          example: "tx789"
+        status:
+          type: string
+          description: "Validation status of the transaction (accepted, pending, failed)"
+          example: "accepted"
+        message:
+          type: string
+          example: "Transaction accepted for processing"
+    TransactionStatusRequest:
+      type: object
+      required:
+        - transaction_id
+      properties:
+        transaction_id:
+          type: string
+          description: "Unique transaction ID"
+          example: "tx789"
+    TransactionStatusResponse:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          example: "tx789"
+        status:
+          type: string
+          description: "Transaction status (pending, confirmed, failed)"
+          example: "confirmed"
+        details:
+          type: object
+          description: "Additional details about the transaction"
+          additionalProperties: true
+          example:
+            blockNumber: 12345678
+            timestamp: "2025-02-04T12:45:00Z"
+
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-
-  schemas:
-    WalletConnectRequest:
-      type: object
-      required:
-        - wallet_address
-        - network
-        - signature
-      properties:
-        wallet_address:
-          type: string
-          example: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
-        network:
-          type: string
-          enum: [ethereum, solana, bsc]
-        signature:
-          type: string
-          example: "0x88df016429689c079f3b2f6ad39fa052532c56795b733da78a91ebe6a713944b"
-
-    AuthResponse:
-      type: object
-      properties:
-        access_token:
-          type: string
-          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-        expires_in:
-          type: integer
-          example: 3600
-
-    Wallet:
-      type: object
-      properties:
-        address:
-          type: string
-        network:
-          type: string
-        connected_at:
-          type: string
-          format: date-time
-
-    SessionRequest:
-      type: object
-      required:
-        - merchant_id
-        - amount
-        - currency
-      properties:
-        merchant_id:
-          type: string
-        amount:
-          type: number
-          format: decimal
-        currency:
-          type: string
-          enum: [USDC, USDT, ETH, SOL]
-
-    Session:
-      type: object
-      properties:
-        session_id:
-          type: string
-        expires_at:
-          type: string
-          format: date-time
-
-    TransactionRequest:
-      type: object
-      required:
-        - session_id
-        - wallet_address
-        - signed_tx_data
-      properties:
-        session_id:
-          type: string
-        wallet_address:
-          type: string
-        signed_tx_data:
-          type: string
-
-    Transaction:
-      type: object
-      properties:
-        tx_id:
-          type: string
-          format: uuid
-        status:
-          type: string
-          enum: [pending, confirmed, failed]
-        tx_hash:
-          type: string
-
-    TransactionStatus:
-      type: object
-      properties:
-        tx_id:
-          type: string
-          format: uuid
-        status:
-          type: string
-        block_number:
-          type: integer
-
-    Error:
-      type: object
-      properties:
-        status:
-          type: string
-          example: "error"
-        message:
-          type: string
-          example: "Invalid signature"
