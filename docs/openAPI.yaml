@@ -4,13 +4,14 @@ info:
   version: "1.0.0"
   description: >
     API for the NFC crypto payment system. This API provides:
-      - User registration (first name, last name, email, password) with JWT issuance.
+      - User registration with JWT issuance.
       - User login with JWT.
       - Submission of new wallet information (wallet name, coin-address mapping, and ERC-20 tokens).
       - Retrieval of all wallet IDs for a user with coin/token addresses.
       - Retrieval of wallet balances (including tokens).
       - Submission of a signed transaction (raw hex string).
-      - Retrieval of transaction status.
+      - Retrieval of transaction status using store ID and transaction ID.
+      - Terminal authentication and transaction management (creating and closing transactions).
 servers:
   - url: https://api.yourdomain.com
     description: Production server
@@ -67,7 +68,7 @@ paths:
             schema:
               $ref: "#/components/schemas/AddWalletRequest"
       security:
-        - BearerAuth: []  # Correct reference to security definition
+        - BearerAuth: [ ]  # JWT authentication
       responses:
         '200':
           description: "Wallet successfully added"
@@ -89,7 +90,7 @@ paths:
             schema:
               $ref: "#/components/schemas/WalletListRequest"
       security:
-        - BearerAuth: []  # Correct reference to security definition
+        - BearerAuth: [ ]  # JWT authentication
       responses:
         '200':
           description: "List of wallets retrieved"
@@ -111,7 +112,7 @@ paths:
             schema:
               $ref: "#/components/schemas/WalletBalanceRequest"
       security:
-        - BearerAuth: []  # Correct reference to security definition
+        - BearerAuth: [ ]  # JWT authentication
       responses:
         '200':
           description: "Wallet balance retrieved"
@@ -133,7 +134,7 @@ paths:
             schema:
               $ref: "#/components/schemas/SendTransactionRequest"
       security:
-        - BearerAuth: []  # Correct reference to security definition
+        - BearerAuth: [ ]  # JWT authentication
       responses:
         '200':
           description: "Transaction accepted for processing"
@@ -147,7 +148,7 @@ paths:
   /transactions/status:
     post:
       summary: "Get Transaction Status"
-      description: "Retrieve the status of a transaction by providing its unique transaction ID in the request body."
+      description: "Retrieve the status of a transaction by providing both store ID and transaction ID."
       requestBody:
         required: true
         content:
@@ -155,7 +156,7 @@ paths:
             schema:
               $ref: "#/components/schemas/TransactionStatusRequest"
       security:
-        - BearerAuth: []  # Correct reference to security definition
+        - BearerAuth: [ ]  # JWT authentication
       responses:
         '200':
           description: "Transaction status retrieved"
@@ -165,6 +166,70 @@ paths:
                 $ref: "#/components/schemas/TransactionStatusResponse"
         '404':
           description: "Transaction not found"
+
+  /terminals/authenticate:
+    post:
+      summary: "Terminal Authentication"
+      description: "Authenticate a terminal to receive a JWT and store ID."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminalAuthRequest"
+      responses:
+        '200':
+          description: "Terminal authenticated successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TerminalAuthResponse"
+        '401':
+          description: "Authentication error"
+
+  /terminals/transactions:
+    post:
+      summary: "Create Transaction by Terminal"
+      description: "A terminal creates a transaction with transaction ID and timestamp."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminalTransactionRequest"
+      security:
+        - BearerAuth: [ ]  # JWT authentication for terminal
+      responses:
+        '200':
+          description: "Transaction created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TerminalTransactionResponse"
+        '400':
+          description: "Error creating transaction"
+
+  /terminals/transactions/close:
+    post:
+      summary: "Close Transaction by Terminal"
+      description: "A terminal closes a transaction by providing the transaction ID."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminalCloseTransactionRequest"
+      security:
+        - BearerAuth: [ ]  # JWT authentication for terminal
+      responses:
+        '200':
+          description: "Transaction closed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TerminalCloseTransactionResponse"
+        '400':
+          description: "Error closing transaction"
 
 components:
   schemas:
@@ -373,8 +438,73 @@ components:
             blockNumber: 12345678
             timestamp: "2025-02-04T12:45:00Z"
 
-  securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    # Terminal API
+    TerminalAuthRequest:
+      type: object
+      required:
+        - terminal_id
+        - store_secret
+      properties:
+        terminal_id:
+          type: string
+          example: "terminal001"
+        store_secret:
+          type: string
+          example: "supersecretkey"
+    TerminalAuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        store_id:
+          type: string
+          example: "store123"
+
+    TerminalTransactionRequest:
+      type: object
+      required:
+        - store_id
+        - transaction_id
+        - timestamp
+      properties:
+        store_id:
+          type: string
+          example: "store123"
+        transaction_id:
+          type: string
+          example: "tx001"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2025-02-04T12:45:00Z"
+
+    TerminalTransactionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Transaction created successfully"
+        transaction_id:
+          type: string
+          example: "tx001"
+
+    TerminalCloseTransactionRequest:
+      type: object
+      required:
+        - store_id
+        - transaction_id
+      properties:
+        store_id:
+          type: string
+          example: "store123"
+        transaction_id:
+          type: string
+          example: "tx001"
+
+    TerminalCloseTransactionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Transaction closed successfully"
