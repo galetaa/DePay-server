@@ -1,7 +1,7 @@
-const { createLogger, transports } = require('winston');
-const Elasticsearch = require('winston-elasticsearch');
+const { createLogger, transports, format } = require('winston');
+const { ElasticsearchTransport } = require('winston-elasticsearch'); // Correct import
 
-const esTransport = new Elasticsearch({
+const esTransport = new ElasticsearchTransport({
   level: 'info',
   clientOpts: {
     node: process.env.ELASTICSEARCH_URL || 'http://localhost:9200',
@@ -10,13 +10,13 @@ const esTransport = new Elasticsearch({
 
 const logger = createLogger({
   level: 'info',
-  format: require('winston').format.combine(
-    require('winston').format.timestamp(),
-    require('winston').format.json()
+  format: format.combine(
+    format.timestamp(),
+    format.json()
   ),
   transports: [
     new transports.Console(),
-    esTransport,
+    esTransport, // Correct instance
   ],
 });
 
