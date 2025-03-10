@@ -1,10 +1,10 @@
 openapi: "3.0.3"
 info:
   title: Crypto NFC Payment API
-  version: "1.0.0"
+  version: "1.1.0"
   description: >
-    API для крипто-транзакций по NFC. Данный API поддерживает работу терминалов и клиентских приложений, включая регистрацию, создание транзакций,
-    расчет газа, импорт кошельков, регистрацию пользователей, прохождение KYC и другие функции.
+    API для крипто-транзакций по NFC. Поддерживаются операции терминалов и клиентских приложений: регистрация, создание транзакций,
+    расчет газа, экспорт кошельков, регистрация пользователей, прохождение KYC и обновление JWT.
 servers:
   - url: https://api.example.com
     description: Production server
@@ -46,7 +46,7 @@ paths:
         - Terminal
       summary: Обновление JWT для терминала.
       security:
-        - terminalAuth: [ ]
+        - terminalAuth: []
       description: >
         Обновление JWT при помощи существующего токена. Используется для поддержания сессии.
       requestBody:
@@ -77,9 +77,10 @@ paths:
         - Transaction
       summary: Инициализация транзакции терминалом.
       security:
-        - terminalAuth: [ ]
+        - terminalAuth: []
       description: >
-        Терминал создает транзакцию с параметрами (store_id, transaction_id, amount, currency, timestamp) и регистрирует её на сервере.
+        Терминал создает транзакцию с параметрами (store_id, transaction_id, amount, currency, timestamp)
+        и регистрирует её на сервере.
       requestBody:
         description: Данные транзакции, инициированной терминалом.
         required: true
@@ -109,8 +110,8 @@ paths:
       description: >
         Эндпоинт позволяет получить актуальный статус транзакции по её идентификатору.
       security:
-        - terminalAuth: [ ]
-        - userAuth: [ ]
+        - terminalAuth: []
+        - userAuth: []
       parameters:
         - in: path
           name: transaction_id
@@ -140,7 +141,7 @@ paths:
       description: >
         Эндпоинт возвращает текущую цену газа, оценку времени подтверждения и статус сети для указанного блокчейна.
       security:
-        - terminalAuth: [ ]
+        - terminalAuth: []
       parameters:
         - in: query
           name: network
@@ -219,6 +220,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /user/refresh-token:
+    post:
+      tags:
+        - User
+      summary: Обновление JWT для пользователя.
+      description: >
+        Пользователь обновляет JWT для поддержания сессии. Обратите внимание, что доступ к пользовательским эндпоинтам разрешен только через мобильное приложение.
+      security:
+        - userAuth: []
+      parameters:
+        - in: header
+          name: X-Mobile-Client
+          required: true
+          schema:
+            type: string
+          description: Идентификатор мобильного клиента (например, "true").
+      requestBody:
+        description: Данные для обновления токена.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Новый JWT успешно выдан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неавторизованный запрос.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /user/kyc:
     post:
       tags:
@@ -228,7 +266,14 @@ paths:
       description: >
         Пользователь отправляет данные для прохождения KYC. Дальнейшая обработка может включать интеграцию с внешними сервисами.
       security:
-        - userAuth: [ ]
+        - userAuth: []
+      parameters:
+        - in: header
+          name: X-Mobile-Client
+          required: true
+          schema:
+            type: string
+          description: Идентификатор мобильного клиента.
       requestBody:
         description: Данные для KYC проверки.
         required: true
@@ -250,48 +295,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /wallet/import:
-    post:
-      tags:
-        - Wallet
-      summary: Импорт кошелька.
-      description: >
-        Пользователь импортирует существующий кошелек. Передаются данные кошелька, включая название, блокчейн, адреса и токены.
-      security:
-        - userAuth: [ ]
-      requestBody:
-        description: Данные для импорта кошелька.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/WalletImportRequest'
-      responses:
-        '200':
-          description: Кошелек успешно импортирован.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WalletResponse'
-        '400':
-          description: Некорректный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /wallets:
+  /wallets/export:
     get:
       tags:
         - Wallet
-      summary: Получение списка кошельков пользователя.
+      summary: Экспорт данных о кошельках пользователя.
       description: >
-        Эндпоинт возвращает все кошельки, импортированные данным пользователем.
+        Эндпоинт возвращает список всех кошельков, сохраненных локально на устройстве, связанных с пользователем.
       security:
-        - userAuth: [ ]
+        - userAuth: []
+      parameters:
+        - in: header
+          name: X-Mobile-Client
+          required: true
+          schema:
+            type: string
+          description: Идентификатор мобильного клиента.
       responses:
         '200':
-          description: Список кошельков успешно получен.
+          description: Данные о кошельках успешно получены.
           content:
             application/json:
               schema:
@@ -305,15 +327,59 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /wallet/{address}/balance:
+    get:
+      tags:
+        - Wallet
+      summary: Получение баланса кошелька по адресу.
+      description: >
+        Эндпоинт возвращает текущий баланс указанного кошелька. Можно использовать для проверки баланса перед транзакцией.
+      security:
+        - userAuth: []
+      parameters:
+        - in: path
+          name: address
+          schema:
+            type: string
+          required: true
+          description: Адрес кошелька.
+        - in: header
+          name: X-Mobile-Client
+          required: true
+          schema:
+            type: string
+          description: Идентификатор мобильного клиента.
+      responses:
+        '200':
+          description: Баланс кошелька успешно получен.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletBalanceResponse'
+        '404':
+          description: Кошелек не найден.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /transaction/submit:
     post:
       tags:
         - Transaction
       summary: Отправка подписанной транзакции.
       description: >
-        Клиент отправляет на сервер подписанную транзакцию вместе с исходными данными для валидации. Сервер проверяет корректность подписи и данные транзакции.
+        Клиент отправляет на сервер подписанную транзакцию вместе с исходными данными для валидации.
+        Помимо стандартных данных, клиент передает адрес отправителя, валюту и текущий баланс для проверки возможности совершения транзакции.
       security:
-        - userAuth: [ ]
+        - userAuth: []
+      parameters:
+        - in: header
+          name: X-Mobile-Client
+          required: true
+          schema:
+            type: string
+          description: Идентификатор мобильного клиента.
       requestBody:
         description: Данные подписанной транзакции.
         required: true
@@ -533,31 +599,6 @@ components:
         message:
           type: string
 
-    WalletImportRequest:
-      type: object
-      properties:
-        user_id:
-          type: string
-        wallet_name:
-          type: string
-        blockchain:
-          type: string
-        addresses:
-          type: object
-          additionalProperties:
-            type: string
-          description: Словарь, сопоставляющий монеты с адресами (например, )
-        tokens:
-          type: object
-          additionalProperties:
-            type: string
-          description: Словарь, сопоставляющий токены с адресами контрактов (например, )
-      required:
-        - user_id
-        - wallet_name
-        - blockchain
-        - addresses
-
     WalletResponse:
       type: object
       properties:
@@ -577,6 +618,17 @@ components:
           type: object
           additionalProperties:
             type: string
+
+    WalletBalanceResponse:
+      type: object
+      properties:
+        address:
+          type: string
+        blockchain:
+          type: string
+        balance:
+          type: string
+          description: Баланс в базовой единице (например, wei).
 
     TransactionSubmitRequest:
       type: object
@@ -602,12 +654,16 @@ components:
             timestamp:
               type: string
               format: date-time
+            current_balance:
+              type: string
+              description: Текущий баланс пользователя в wei (для валидации).
           required:
             - sender_wallet_address
             - recipient_address
             - amount
             - currency
             - timestamp
+            - current_balance
       required:
         - transaction_id
         - signed_transaction
