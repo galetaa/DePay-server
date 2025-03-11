@@ -1,4 +1,4 @@
-module github.com/galetaa/auth-terminal-service
+module auth-terminal-service
 
 go 1.24.1
 

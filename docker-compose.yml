@@ -1,0 +1,78 @@
+services:
+  kong-database:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_DB: kong
+      POSTGRES_PASSWORD: kong
+    volumes:
+      - kong-db-data:/var/lib/postgresql/data
+    networks:
+      - kong-net
+
+  users-database:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: users
+      POSTGRES_DB: users_db
+      POSTGRES_PASSWORD: users
+    volumes:
+      - users-db-data:/var/lib/postgresql/data
+    networks:
+      - kong-net
+
+  kong:
+    image: kong:latest
+    depends_on:
+      - kong-database
+      - auth-terminal-service
+      - user-service
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_PASSWORD: kong
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_ADMIN_GUI_LISTEN: "0.0.0.0:8002"
+      KONG_ADMIN_GUI_URL: "http://localhost:8002"
+    ports:
+      - "8000:8000"  # Прокси запросов
+      - "8443:8443"  # HTTPS-прокси
+      - "8001:8001"  # Админ API
+      - "8444:8444"  # Админ HTTPS
+      - "8002:8002"  #Kongo Manager (GUI)
+    command: "kong docker-start"
+    networks:
+      - kong-net
+
+  auth-terminal-service:
+    build: ./auth-terminal-service
+    environment:
+      - JWT_SECRET=your_super_secret_key
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    networks:
+      - kong-net
+
+  user-service:
+    build: ./user-service
+    environment:
+      - JWT_SECRET=your_user_service_secret
+      - PORT=8082
+      - PG_CONN=postgres://users:users@users-database:5432/users_db?sslmode=disable
+    ports:
+      - "8082:8082"
+    networks:
+      - kong-net
+
+volumes:
+  kong-db-data:
+  users-db-data:
+
+networks:
+  kong-net:
+    driver: bridge
