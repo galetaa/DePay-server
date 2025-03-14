@@ -9,6 +9,8 @@ services:
       - kong-db-data:/var/lib/postgresql/data
     networks:
       - kong-net
+    ports:
+      - "5432:5432"  # Открываем порт для внешнего доступа
 
   users-database:
     image: postgres:13
@@ -20,6 +22,8 @@ services:
       - users-db-data:/var/lib/postgresql/data
     networks:
       - kong-net
+    ports:
+      - "5433:5432"  # Открываем порт для users_db (чтобы не конфликтовало с kong)
 
   kong:
     image: kong:latest
@@ -36,8 +40,8 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: "0.0.0.0:8001"
-      KONG_ADMIN_GUI_LISTEN: "0.0.0.0:8002"
-      KONG_ADMIN_GUI_URL: "http://localhost:8002"
+      KONG_ADMIN_GUI_URL: "http://213.176.75.115:8002"
+      KONG_ADMIN_API_URI: "http://213.176.75.115:8001"
     ports:
       - "8000:8000"  # Прокси запросов
       - "8443:8443"  # HTTPS-прокси
