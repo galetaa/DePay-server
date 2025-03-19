@@ -4,12 +4,12 @@ import (
 	"log"
 	"os"
 
+	"shared/config"
+	"shared/logging"
+	"shared/middleware"
 	"user-service/internal/controllers"
 	"user-service/internal/repositories"
 	"user-service/internal/services"
-	"user-service/shared/config"
-	"user-service/shared/logging"
-	"user-service/shared/middleware"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

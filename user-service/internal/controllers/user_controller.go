@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"time"
 
+	"shared/utils"
 	"user-service/internal/models"
 	"user-service/internal/services"
-	"user-service/shared/utils"
 
 	"github.com/gin-gonic/gin"
 )
