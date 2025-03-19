@@ -6,9 +6,9 @@ import (
 
 	"kyc-service/internal/controllers"
 	"kyc-service/internal/services"
-	"shared/config"
-	"shared/logging"
-	"shared/middleware"
+	"kyc-service/shared/config"
+	"kyc-service/shared/logging"
+	"kyc-service/shared/middleware"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

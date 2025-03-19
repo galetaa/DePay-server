@@ -4,12 +4,12 @@ import (
 	"log"
 	"os"
 
-	"shared/config"
-	"shared/logging"
-	"shared/middleware"
 	"wallet-service/internal/controllers"
 	"wallet-service/internal/repositories"
 	"wallet-service/internal/services"
+	"wallet-service/shared/config"
+	"wallet-service/shared/logging"
+	"wallet-service/shared/middleware"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
