@@ -17,6 +17,9 @@ jobs:
         service:
           - user-service
           - wallet-service
+          - transaction-core-service
+          - transaction-validation-service
+          - gas-info-service
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
