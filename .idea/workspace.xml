@@ -5,41 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="bd2b111a-5154-454e-9920-17c1a186975a" name="Changes" comment="Added transaction services">
-      <change afterPath="$PROJECT_DIR$/.idea/depay-server.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/RestAPI.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/SystemEntities.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/openAPI.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/postman.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/postman_instruction.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gas-info-service/cmd/gas-info-service/main.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gas-info-service/go.mod" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gas-info-service/go.sum" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gas-info-service/internal/controllers/gas_controller.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gas-info-service/internal/models/gas_info.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gas-info-service/internal/services/gas_service.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/gas-info-service/tests/gas_info_test.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-core-service/cmd/transaction-core-service/main.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-core-service/go.mod" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-core-service/go.sum" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-core-service/internal/controllers/transaction_controller.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-core-service/internal/models/transaction.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-core-service/internal/repositories/transaction_repository.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-core-service/internal/services/transaction_service.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-core-service/tests/transaction_core_test.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-validation-service/cmd/transaction-validation-service/main.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-validation-service/go.mod" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-validation-service/go.sum" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-validation-service/internal/controllers/validation_controller.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-validation-service/internal/models/validation_request.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-validation-service/internal/services/validation_service.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/transaction-validation-service/tests/validation_service_test.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.github/workflows/ci-cd.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/ci-cd.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/DePay-server.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server-config/jwt_private_key.pem" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server-config/jwt_public_key.pem" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/server-config/setup_vault_and_kong.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/shared/logging/logger.go" beforeDir="false" afterPath="$PROJECT_DIR$/shared/logging/logger.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -51,49 +20,55 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "galetaa"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;galetaa&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/galetaa/DePay-server.git",
-    "accountId": "6fa6eac9-3706-4023-9581-6a3dea7b6f6c"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/galetaa/DePay-server.git&quot;,
+    &quot;accountId&quot;: &quot;6fa6eac9-3706-4023-9581-6a3dea7b6f6c&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "customColor": "",
-  "associatedIndex": 3
-}]]></component>
+}</component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="ProjectErrors" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 3
+}</component>
   <component name="ProjectId" id="2uZW3Uq0OPPABaMMf5mL9jpHlQm" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ASKED_SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "Go Build.go build transaction-core-service/cmd/transaction-core-service.executor": "Debug",
-    "Go Test.go test transaction-core-service/tests.executor": "Debug",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.go.formatter.settings.were.checked": "true",
-    "RunOnceActivity.go.migrated.go.modules.settings": "true",
-    "RunOnceActivity.go.modules.automatic.dependencies.download": "true",
-    "RunOnceActivity.go.modules.go.list.on.any.changes.was.set": "true",
-    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "git-widget-placeholder": "main",
-    "go.import.settings.migrated": "true",
-    "go.sdk.automatically.set": "true",
-    "last_opened_file_path": "/home/galetka/Documents/Programming/Golang",
-    "node.js.detected.package.eslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "run.code.analysis.last.selected.profile": "pProject Default",
-    "settings.editor.selected.configurable": "go.vgo"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ASKED_SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;Go Build.go build transaction-core-service/cmd/transaction-core-service.executor&quot;: &quot;Debug&quot;,
+    &quot;Go Test.go test transaction-core-service/tests.executor&quot;: &quot;Debug&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.go.formatter.settings.were.checked&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.go.migrated.go.modules.settings&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.go.modules.automatic.dependencies.download&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.go.modules.go.list.on.any.changes.was.set&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;go.import.settings.migrated&quot;: &quot;true&quot;,
+    &quot;go.sdk.automatically.set&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/galetka/Documents/Programming/Golang&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;go.vgo&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager" selected="Go Test.go test transaction-core-service/tests">
     <configuration name="go build transaction-core-service/cmd/transaction-core-service" type="GoApplicationRunConfiguration" factoryName="Go Application" temporary="true" nameIsGenerated="true">
       <module name="depay-server" />
@@ -102,6 +77,26 @@
       <package value="transaction-core-service/cmd/transaction-core-service" />
       <directory value="$PROJECT_DIR$" />
       <filePath value="$PROJECT_DIR$/transaction-core-service/cmd/transaction-core-service/main.go" />
+      <method v="2" />
+    </configuration>
+    <configuration name="go build transaction-core-service/cmd/transaction-core-service" type="GoApplicationRunConfiguration" factoryName="Go Application" temporary="true" nameIsGenerated="true">
+      <module name="depay-server" />
+      <working_directory value="$PROJECT_DIR$/transaction-core-service" />
+      <kind value="PACKAGE" />
+      <package value="transaction-core-service/cmd/transaction-core-service" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$/transaction-core-service/cmd/transaction-core-service/main.go" />
+      <method v="2" />
+    </configuration>
+    <configuration name="go test transaction-core-service/tests" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">
+      <module name="depay-server" />
+      <working_directory value="$PROJECT_DIR$/transaction-core-service/tests" />
+      <root_directory value="$PROJECT_DIR$/transaction-core-service" />
+      <kind value="PACKAGE" />
+      <package value="transaction-core-service/tests" />
+      <directory value="$PROJECT_DIR$" />
+      <filePath value="$PROJECT_DIR$" />
+      <framework value="gotest" />
       <method v="2" />
     </configuration>
     <configuration name="go test transaction-core-service/tests" type="GoTestRunConfiguration" factoryName="Go Test" temporary="true" nameIsGenerated="true">

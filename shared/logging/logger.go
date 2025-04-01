@@ -19,5 +19,8 @@ func InitLogger() error {
 
 // Sync завершает работу логгера (важно при завершении приложения)
 func Sync() {
-	Logger.Sync()
+	err := Logger.Sync()
+	if err != nil {
+		return
+	}
 }
