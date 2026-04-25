@@ -1,6 +1,8 @@
 BEGIN;
 
 TRUNCATE TABLE
+    merchant_webhook_deliveries,
+    merchant_webhooks,
     audit_logs,
     risk_alerts,
     blacklisted_wallets,
@@ -71,6 +73,11 @@ INSERT INTO stores(owner_id, store_name, legal_name, contact_email, contact_phon
     (4, 'Metro Books', 'Metro Books Ltd', 'merchant3@example.com', '+20000000003', 'London, Soho', 'approved', now() - interval '40 days'),
     (6, 'Orbit Electronics', 'Orbit Electronics FZ', 'merchant4@example.com', '+20000000004', 'Dubai Marina', 'approved', now() - interval '35 days'),
     (9, 'Fresh Deli', 'Fresh Deli OOO', 'merchant5@example.com', '+20000000005', 'Tbilisi Center', 'rejected', now() - interval '30 days');
+
+INSERT INTO merchant_webhooks(store_id, url, event_types, secret_hash, is_active)
+VALUES
+    (1, 'https://webhooks.example.com/depay/north-coffee', ARRAY['transaction.created', 'transaction.broadcasted', 'transaction.confirmed', 'transaction.failed'], crypt('north-coffee-webhook-secret', gen_salt('bf')), true),
+    (3, 'https://webhooks.example.com/depay/metro-books', ARRAY['transaction.confirmed', 'transaction.failed'], crypt('metro-books-webhook-secret', gen_salt('bf')), true);
 
 INSERT INTO kyc_applications(user_id, status, reviewer_id, rejection_reason, submitted_at, reviewed_at)
 SELECT
