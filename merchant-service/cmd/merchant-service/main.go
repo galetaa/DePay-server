@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
 
 	"merchant-service/internal/controllers"
 	"merchant-service/internal/repositories"
 	"merchant-service/internal/services"
 	"shared/config"
+	"shared/db"
 	"shared/logging"
 	"shared/middleware"
 
@@ -27,6 +30,17 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 
 	repo := repositories.NewMerchantRepository()
+	if os.Getenv("DATABASE_URL") != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		conn, err := db.Open(ctx)
+		if err != nil {
+			logging.Logger.Warn("PostgreSQL is unavailable, falling back to in-memory merchant repository", zap.Error(err))
+		} else {
+			defer conn.Close()
+			repo = repositories.NewPostgresMerchantRepository(conn)
+		}
+	}
 	svc := services.NewMerchantService(repo)
 	ctrl := controllers.NewMerchantController(svc)
 

@@ -1,12 +1,15 @@
 package repositories
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"strconv"
 	"sync"
 	"time"
 
 	"merchant-service/internal/models"
+	"shared/auth"
 )
 
 type MerchantRepository interface {
@@ -146,4 +149,263 @@ func (r *memoryMerchantRepo) ListTerminals(merchantID string) ([]models.Terminal
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.terminals[merchantID], nil
+}
+
+type postgresMerchantRepo struct {
+	db *sql.DB
+}
+
+func NewPostgresMerchantRepository(db *sql.DB) MerchantRepository {
+	return &postgresMerchantRepo{db: db}
+}
+
+func (r *postgresMerchantRepo) Create(merchant models.Merchant) (models.Merchant, error) {
+	ctx := context.Background()
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return models.Merchant{}, err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `INSERT INTO roles(role_name) VALUES ('merchant') ON CONFLICT DO NOTHING`); err != nil {
+		return models.Merchant{}, err
+	}
+
+	var userID int64
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO users(username, email, password_hash, kyc_status)
+		VALUES ($1, $1, $2, 'not_submitted')
+		RETURNING user_id
+	`, merchant.OwnerEmail, merchant.PasswordHash).Scan(&userID)
+	if err != nil {
+		return models.Merchant{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO user_roles(user_id, role_id)
+		SELECT $1, role_id FROM roles WHERE role_name = 'merchant'
+		ON CONFLICT DO NOTHING
+	`, userID); err != nil {
+		return models.Merchant{}, err
+	}
+
+	var storeID int64
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO stores(owner_id, store_name, legal_name, contact_email, verification_status)
+		VALUES ($1, $2, NULLIF($3, ''), $4, 'not_submitted')
+		RETURNING store_id, created_at
+	`, userID, merchant.StoreName, merchant.LegalName, merchant.OwnerEmail).Scan(&storeID, &merchant.CreatedAt)
+	if err != nil {
+		return models.Merchant{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.Merchant{}, err
+	}
+
+	merchant.ID = strconv.FormatInt(storeID, 10)
+	merchant.VerificationStatus = "not_submitted"
+	return merchant, nil
+}
+
+func (r *postgresMerchantRepo) GetByEmail(email string) (models.Merchant, error) {
+	return r.getOne(context.Background(), "u.email = $1", email)
+}
+
+func (r *postgresMerchantRepo) GetByID(id string) (models.Merchant, error) {
+	return r.getOne(context.Background(), "s.store_id = $1", id)
+}
+
+func (r *postgresMerchantRepo) getOne(ctx context.Context, where string, arg any) (models.Merchant, error) {
+	query := `
+		SELECT
+			s.store_id::text,
+			u.email,
+			s.store_name,
+			COALESCE(s.legal_name, ''),
+			s.verification_status::text,
+			s.created_at,
+			u.password_hash
+		FROM stores s
+		JOIN users u ON u.user_id = s.owner_id
+		WHERE ` + where + `
+		ORDER BY s.store_id
+		LIMIT 1
+	`
+
+	var merchant models.Merchant
+	if err := r.db.QueryRowContext(ctx, query, arg).Scan(
+		&merchant.ID,
+		&merchant.OwnerEmail,
+		&merchant.StoreName,
+		&merchant.LegalName,
+		&merchant.VerificationStatus,
+		&merchant.CreatedAt,
+		&merchant.PasswordHash,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.Merchant{}, errors.New("merchant not found")
+		}
+		return models.Merchant{}, err
+	}
+	return merchant, nil
+}
+
+func (r *postgresMerchantRepo) SubmitVerification(id string, req models.VerificationRequest) (models.Merchant, error) {
+	ctx := context.Background()
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return models.Merchant{}, err
+	}
+	defer tx.Rollback()
+
+	var storeID int64
+	err = tx.QueryRowContext(ctx, `
+		UPDATE stores
+		SET legal_name = $2,
+		    contact_email = $3,
+		    store_address = $4,
+		    verification_status = 'pending',
+		    updated_at = now()
+		WHERE store_id = $1
+		RETURNING store_id
+	`, id, req.LegalName, req.ContactEmail, req.Address).Scan(&storeID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.Merchant{}, errors.New("merchant not found")
+		}
+		return models.Merchant{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO merchant_verification_applications(store_id, status)
+		VALUES ($1, 'pending')
+	`, storeID); err != nil {
+		return models.Merchant{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO audit_logs(action, entity_type, entity_id, new_values)
+		VALUES ('merchant.verification_submitted', 'store', $1, jsonb_build_object('document_url', $2, 'legal_name', $3))
+	`, id, req.DocumentURL, req.LegalName); err != nil {
+		return models.Merchant{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return models.Merchant{}, err
+	}
+	return r.GetByID(id)
+}
+
+func (r *postgresMerchantRepo) CreateInvoice(merchantID string, req models.CreateInvoiceRequest) (models.Invoice, error) {
+	if err := r.ensureApprovedMerchant(context.Background(), merchantID); err != nil {
+		return models.Invoice{}, err
+	}
+
+	var invoice models.Invoice
+	invoice.MerchantID = merchantID
+	err := r.db.QueryRowContext(context.Background(), `
+		INSERT INTO payment_invoices(store_id, external_order_id, amount_usdt, status, expires_at)
+		VALUES ($1, $2, $3::numeric, 'issued', now() + interval '30 minutes')
+		RETURNING invoice_id::text, external_order_id, amount_usdt::text, status::text, expires_at
+	`, merchantID, req.ExternalOrderID, req.AmountUSDT).Scan(
+		&invoice.ID,
+		&invoice.ExternalOrderID,
+		&invoice.AmountUSDT,
+		&invoice.Status,
+		&invoice.ExpiresAt,
+	)
+	if err != nil {
+		return models.Invoice{}, err
+	}
+	return invoice, nil
+}
+
+func (r *postgresMerchantRepo) ListInvoices(merchantID string) ([]models.Invoice, error) {
+	rows, err := r.db.QueryContext(context.Background(), `
+		SELECT invoice_id::text, store_id::text, COALESCE(external_order_id, ''), amount_usdt::text, status::text, expires_at
+		FROM payment_invoices
+		WHERE store_id = $1
+		ORDER BY created_at DESC, invoice_id DESC
+	`, merchantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	invoices := make([]models.Invoice, 0)
+	for rows.Next() {
+		var invoice models.Invoice
+		if err := rows.Scan(&invoice.ID, &invoice.MerchantID, &invoice.ExternalOrderID, &invoice.AmountUSDT, &invoice.Status, &invoice.ExpiresAt); err != nil {
+			return nil, err
+		}
+		invoices = append(invoices, invoice)
+	}
+	return invoices, rows.Err()
+}
+
+func (r *postgresMerchantRepo) CreateTerminal(merchantID string, req models.CreateTerminalRequest) (models.Terminal, error) {
+	if err := r.ensureApprovedMerchant(context.Background(), merchantID); err != nil {
+		return models.Terminal{}, err
+	}
+
+	secretHash := auth.HashToken(req.SerialNumber + ":" + merchantID)
+	var terminal models.Terminal
+	terminal.MerchantID = merchantID
+	err := r.db.QueryRowContext(context.Background(), `
+		INSERT INTO terminals(store_id, serial_number, secret_hash, status)
+		VALUES ($1, $2, $3, 'active')
+		RETURNING terminal_id::text, serial_number, status::text, created_at
+	`, merchantID, req.SerialNumber, secretHash).Scan(
+		&terminal.ID,
+		&terminal.SerialNumber,
+		&terminal.Status,
+		&terminal.CreatedAt,
+	)
+	if err != nil {
+		return models.Terminal{}, err
+	}
+	return terminal, nil
+}
+
+func (r *postgresMerchantRepo) ListTerminals(merchantID string) ([]models.Terminal, error) {
+	rows, err := r.db.QueryContext(context.Background(), `
+		SELECT terminal_id::text, store_id::text, serial_number, status::text, created_at
+		FROM terminals
+		WHERE store_id = $1
+		ORDER BY created_at DESC, terminal_id DESC
+	`, merchantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	terminals := make([]models.Terminal, 0)
+	for rows.Next() {
+		var terminal models.Terminal
+		if err := rows.Scan(&terminal.ID, &terminal.MerchantID, &terminal.SerialNumber, &terminal.Status, &terminal.CreatedAt); err != nil {
+			return nil, err
+		}
+		terminals = append(terminals, terminal)
+	}
+	return terminals, rows.Err()
+}
+
+func (r *postgresMerchantRepo) ensureApprovedMerchant(ctx context.Context, merchantID string) error {
+	var status string
+	err := r.db.QueryRowContext(ctx, `
+		SELECT verification_status::text
+		FROM stores
+		WHERE store_id = $1
+	`, merchantID).Scan(&status)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("merchant not found")
+		}
+		return err
+	}
+	if status != "approved" {
+		return errors.New("merchant verification is required")
+	}
+	return nil
 }
