@@ -8,9 +8,13 @@ import (
 
 // Config хранит общие настройки приложения
 type Config struct {
-	AppName string `mapstructure:"APP_NAME"`
-	Port    string `mapstructure:"PORT"`
-	// Дополнительные переменные: база данных, ключи, URL нод и т.д.
+	AppName     string `mapstructure:"APP_NAME"`
+	Port        string `mapstructure:"PORT"`
+	DatabaseURL string `mapstructure:"DATABASE_URL"`
+	RedisAddr   string `mapstructure:"REDIS_ADDR"`
+	RedisPass   string `mapstructure:"REDIS_PASSWORD"`
+	RabbitMQURL string `mapstructure:"RABBITMQ_URL"`
+	JWTSecret   string `mapstructure:"JWT_SECRET"`
 }
 
 // Cfg – глобальная переменная для доступа к конфигурации
@@ -22,6 +26,9 @@ func InitConfig() error {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".") // можно добавить дополнительные пути
 	viper.AutomaticEnv()
+	viper.SetDefault("REDIS_ADDR", "redis:6379")
+	viper.SetDefault("RABBITMQ_URL", "amqp://myuser:mypassword@rabbitmq:5672/")
+	viper.SetDefault("JWT_SECRET", "dev_secret_change_me")
 
 	// Если конфигурационный файл не найден, используем только env-переменные
 	if err := viper.ReadInConfig(); err != nil {

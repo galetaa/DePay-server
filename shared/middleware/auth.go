@@ -1,8 +1,11 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+
+	"shared/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
@@ -25,8 +28,10 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 
 		// Здесь можно добавить проверку алгоритма, ключа и т.д.
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			// Проверяем алгоритм и возвращаем секретный ключ
-			return []byte("your_secret_key"), nil
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(utils.GetJWTSecret()), nil
 		})
 
 		if err != nil || !token.Valid {
@@ -37,5 +42,45 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		// При необходимости можно сохранить claims в контексте
 		c.Set("claims", token.Claims)
 		c.Next()
+	}
+}
+
+func RoleMiddleware(requiredRoles ...string) gin.HandlerFunc {
+	required := make(map[string]struct{}, len(requiredRoles))
+	for _, role := range requiredRoles {
+		required[role] = struct{}{}
+	}
+
+	return func(c *gin.Context) {
+		rawClaims, ok := c.Get("claims")
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "claims are missing"})
+			return
+		}
+
+		claims, ok := rawClaims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid claims"})
+			return
+		}
+
+		rolesValue, ok := claims["roles"].([]interface{})
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "roles are missing"})
+			return
+		}
+
+		for _, roleValue := range rolesValue {
+			role, ok := roleValue.(string)
+			if !ok {
+				continue
+			}
+			if _, allowed := required[role]; allowed {
+				c.Next()
+				return
+			}
+		}
+
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "insufficient role"})
 	}
 }
