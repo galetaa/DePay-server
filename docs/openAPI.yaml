@@ -349,6 +349,15 @@ paths:
       responses:
         "200":
           description: Cancelled
+  /api/transaction/{transaction_id}/submit:
+    post:
+      tags: [Transaction]
+      summary: Move transaction to submitted
+      parameters:
+        - $ref: "#/components/parameters/TransactionID"
+      responses:
+        "200":
+          description: Transaction submitted
   /api/transaction/{transaction_id}/validate:
     post:
       tags: [Transaction]
@@ -396,6 +405,20 @@ paths:
       responses:
         "200":
           description: Gas history
+
+  /api/kyc:
+    post:
+      tags: [KYC]
+      summary: Process KYC request with configured mock or HTTP provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KYCProviderRequest"
+      responses:
+        "200":
+          description: KYC provider response
 
   /api/admin/tables:
     get:
@@ -570,6 +593,16 @@ components:
         document_type:
           type: string
         document_url:
+          type: string
+    KYCProviderRequest:
+      type: object
+      required: [user_id, document_type, document_data]
+      properties:
+        user_id:
+          type: string
+        document_type:
+          type: string
+        document_data:
           type: string
     MerchantRegisterRequest:
       type: object
