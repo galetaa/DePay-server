@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
 
 	"shared/config"
+	"shared/db"
 	"shared/logging"
 	"shared/middleware"
 	"wallet-service/internal/controllers"
@@ -32,6 +35,17 @@ func main() {
 
 	// Инициализируем зависимости
 	walletRepo := repositories.NewWalletRepository()
+	if os.Getenv("DATABASE_URL") != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		conn, err := db.Open(ctx)
+		if err != nil {
+			logging.Logger.Warn("PostgreSQL is unavailable, falling back to in-memory wallet repository", zap.Error(err))
+		} else {
+			defer conn.Close()
+			walletRepo = repositories.NewPostgresWalletRepository(conn)
+		}
+	}
 	walletSvc := services.NewWalletService(walletRepo)
 	walletCtrl := controllers.NewWalletController(walletSvc)
 
@@ -49,6 +63,16 @@ func main() {
 	// Эндпоинты Wallet Service
 	router.GET("/wallet/export", walletCtrl.ExportWallets)
 	router.POST("/wallet/balance", walletCtrl.GetBalance)
+
+	api := router.Group("/api")
+	wallets := api.Group("/wallets")
+	wallets.POST("", walletCtrl.CreateWallet)
+	wallets.GET("", walletCtrl.ExportWallets)
+	wallets.GET("/:wallet_id/balances", walletCtrl.GetWalletBalances)
+	wallets.POST("/:wallet_id/sync", walletCtrl.SyncWallet)
+	wallets.GET("/:wallet_id/balance", walletCtrl.GetBalanceByAddress)
+	wallets.GET("/:wallet_id", walletCtrl.GetWallet)
+	wallets.DELETE("/:wallet_id", walletCtrl.DeleteWallet)
 
 	// Чтение порта из переменной окружения
 	port := os.Getenv("PORT")

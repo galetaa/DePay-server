@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"wallet-service/internal/models"
@@ -15,6 +16,10 @@ import (
 type WalletService interface {
 	ExportWallets() ([]models.Wallet, error)
 	GetBalance(req models.BalanceRequest) (models.BalanceResponse, error)
+	CreateWallet(req models.CreateWalletRequest) (models.Wallet, error)
+	GetWallet(id string) (models.Wallet, error)
+	DeleteWallet(id string) error
+	GetWalletBalances(walletID string) ([]models.WalletBalance, error)
 }
 
 type walletService struct {
@@ -24,10 +29,13 @@ type walletService struct {
 }
 
 func NewWalletService(repo repositories.WalletRepository) WalletService {
-	// Инициализация Redis клиента (адрес должен соответствовать настройкам в Kubernetes)
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = "redis:6379"
+	}
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "redis:6379",
-		Password: "",
+		Addr:     addr,
+		Password: os.Getenv("REDIS_PASSWORD"),
 		DB:       0,
 	})
 
@@ -40,7 +48,7 @@ func NewWalletService(repo repositories.WalletRepository) WalletService {
 
 // ExportWallets возвращает список кошельков
 func (s *walletService) ExportWallets() ([]models.Wallet, error) {
-	return s.repo.GetAllWallets()
+	return s.repo.GetAllWallets(s.ctx)
 }
 
 // GetBalance возвращает баланс указанного кошелька, используя кэш Redis
@@ -58,6 +66,22 @@ func (s *walletService) GetBalance(req models.BalanceRequest) (models.BalanceRes
 		Blockchain: "ethereum",
 		Balance:    balance,
 	}, nil
+}
+
+func (s *walletService) CreateWallet(req models.CreateWalletRequest) (models.Wallet, error) {
+	return s.repo.Create(s.ctx, req)
+}
+
+func (s *walletService) GetWallet(id string) (models.Wallet, error) {
+	return s.repo.GetByID(s.ctx, id)
+}
+
+func (s *walletService) DeleteWallet(id string) error {
+	return s.repo.Delete(s.ctx, id)
+}
+
+func (s *walletService) GetWalletBalances(walletID string) ([]models.WalletBalance, error) {
+	return s.repo.GetBalances(s.ctx, walletID)
 }
 
 // Имитация вызова к Blockchain Module для получения баланса
