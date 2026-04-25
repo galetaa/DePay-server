@@ -10,6 +10,7 @@ import (
 	"shared/db"
 	"shared/logging"
 	"shared/middleware"
+	"shared/observability"
 	"user-service/internal/controllers"
 	"user-service/internal/repositories"
 	"user-service/internal/services"
@@ -54,11 +55,13 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
+	router.Use(observability.Middleware("user-service"))
 
 	// Эндпоинт проверки работоспособности сервиса
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	router.GET("/metrics", observability.Handler())
 
 	// Определяем маршруты для работы с пользователями
 	router.POST("/user/register", userCtrl.Register)

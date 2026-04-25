@@ -10,6 +10,7 @@ import (
 	"shared/db"
 	"shared/logging"
 	"shared/middleware"
+	"shared/observability"
 	"transaction-validation-service/internal/controllers"
 	"transaction-validation-service/internal/services"
 
@@ -46,9 +47,11 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
+	router.Use(observability.Middleware("transaction-validation-service"))
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	router.GET("/metrics", observability.Handler())
 	// Эндпоинт для проверки валидности транзакции
 	router.POST("/transaction/validate", validationCtrl.ValidateTransaction)
 	router.POST("/api/transaction/validate", validationCtrl.ValidateTransaction)

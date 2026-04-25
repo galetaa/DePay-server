@@ -9,6 +9,7 @@ import (
 	"shared/config"
 	"shared/logging"
 	"shared/middleware"
+	"shared/observability"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -32,9 +33,11 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
+	router.Use(observability.Middleware("gas-info-service"))
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	router.GET("/metrics", observability.Handler())
 	// Эндпоинт для получения информации о газе. Ожидается query параметр "network"
 	router.GET("/gas-info", gasCtrl.GetGasInfo)
 	router.GET("/api/transactions/gas-info", gasCtrl.GetGasInfo)

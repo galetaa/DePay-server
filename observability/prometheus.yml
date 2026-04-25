@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: depay-services
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - user-service:8080
+          - wallet-service:8084
+          - transaction-core-service:8085
+          - transaction-validation-service:8081
+          - gas-info-service:8082
+          - kyc-service:8086
+          - merchant-service:8083
+          - admin-service:8090
+  - job_name: depay-infra
+    static_configs:
+      - targets:
+          - prometheus:9090

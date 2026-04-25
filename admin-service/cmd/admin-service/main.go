@@ -12,6 +12,7 @@ import (
 	"shared/db"
 	"shared/logging"
 	"shared/middleware"
+	"shared/observability"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -43,10 +44,12 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
+	router.Use(observability.Middleware("admin-service"))
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	router.GET("/metrics", observability.Handler())
 
 	api := router.Group("/api")
 	api.GET("/admin/tables", adminCtrl.ListTables)

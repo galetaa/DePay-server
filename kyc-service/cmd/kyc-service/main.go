@@ -9,6 +9,7 @@ import (
 	"shared/config"
 	"shared/logging"
 	"shared/middleware"
+	"shared/observability"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -38,14 +39,17 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
+	router.Use(observability.Middleware("kyc-service"))
 
 	// Эндпоинт для проверки работоспособности
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	router.GET("/metrics", observability.Handler())
 
 	// Эндпоинт для обработки KYC запросов
 	router.POST("/kyc", kycCtrl.ProcessKYC)
+	router.POST("/api/kyc", kycCtrl.ProcessKYC)
 
 	port := os.Getenv("PORT")
 	if port == "" {
