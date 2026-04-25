@@ -3,7 +3,7 @@ KIND ?= $(shell command -v kind 2>/dev/null || printf "%s/bin/kind" "$$(go env G
 KIND_CLUSTER ?= depay-kubectl-check
 SERVICES := user-service wallet-service transaction-core-service transaction-validation-service gas-info-service kyc-service merchant-service admin-service
 
-.PHONY: up backend-up web-up gateway-up observability-up secrets-up full-up prod-like-up dev-ready down wait-db migrate-up migrate-down seed sql-test test test-go web-dev web-build web-test kind-install kind-up kind-down k8s-validate k8s-dry-run
+.PHONY: up backend-up web-up gateway-up observability-up secrets-up full-up prod-like-up dev-ready down reset-local-data wait-db migrate-up migrate-down seed sql-test test test-go web-dev web-build web-test kind-install kind-up kind-down k8s-validate k8s-dry-run
 
 up:
 	docker compose up -d postgres redis rabbitmq
@@ -33,6 +33,9 @@ dev-ready: up wait-db migrate-up seed backend-up
 
 down:
 	docker compose --profile backend --profile web --profile gateway --profile observability --profile secrets down
+
+reset-local-data:
+	docker compose --profile backend --profile web --profile gateway --profile observability --profile secrets down -v --remove-orphans
 
 wait-db:
 	@until pg_isready -d "$(DATABASE_URL)" >/dev/null 2>&1; do \
