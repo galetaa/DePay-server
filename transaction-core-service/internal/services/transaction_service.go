@@ -2,10 +2,11 @@ package services
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/rabbitmq/amqp091-go"
 	"os"
+
+	"github.com/rabbitmq/amqp091-go"
+
 	"transaction-core-service/internal/models"
 	"transaction-core-service/internal/repositories"
 )
@@ -13,6 +14,8 @@ import (
 // TransactionService описывает бизнес-логику для работы с транзакциями.
 type TransactionService interface {
 	Initiate(tx models.Transaction) error
+	Get(transactionID string) (*models.Transaction, error)
+	UpdateStatus(transactionID string, status string, failureReason string) error
 }
 
 type transactionService struct {
@@ -28,26 +31,33 @@ func NewTransactionService(repo repositories.TransactionRepository) TransactionS
 	var q amqp091.Queue
 
 	if os.Getenv("SKIP_RABBITMQ") != "true" {
-		// Подключаемся к RabbitMQ (конфигурация должна задаваться через переменные окружения для продакшена)
-		conn, err := amqp091.Dial("amqp://myuser:mypassword@rabbitmq:5672/")
-		if err != nil {
-			// В продакшене можно логировать и пытаться переподключиться, здесь panic для краткости.
-			panic(fmt.Sprintf("failed to connect to RabbitMQ: %v", err))
+		rabbitURL := os.Getenv("RABBITMQ_URL")
+		if rabbitURL == "" {
+			rabbitURL = "amqp://myuser:mypassword@rabbitmq:5672/"
 		}
-		ch, err = conn.Channel()
+		conn, err := amqp091.Dial(rabbitURL)
 		if err != nil {
-			panic(fmt.Sprintf("failed to open RabbitMQ channel: %v", err))
-		}
-		q, err = ch.QueueDeclare(
-			"transaction_queue", // имя очереди
-			true,                // durable
-			false,               // auto-delete
-			false,               // exclusive
-			false,               // no-wait
-			nil,                 // arguments
-		)
-		if err != nil {
-			panic(fmt.Sprintf("failed to declare RabbitMQ queue: %v", err))
+			ch = nil
+			q = amqp091.Queue{Name: "transaction_queue"}
+		} else {
+			ch, err = conn.Channel()
+			if err != nil {
+				ch = nil
+				q = amqp091.Queue{Name: "transaction_queue"}
+			} else {
+				q, err = ch.QueueDeclare(
+					"transaction_queue",
+					true,
+					false,
+					false,
+					false,
+					nil,
+				)
+				if err != nil {
+					ch = nil
+					q = amqp091.Queue{Name: "transaction_queue"}
+				}
+			}
 		}
 	} else {
 		// Тестовый режим: пропускаем подключение к RabbitMQ.
@@ -90,7 +100,15 @@ func (s *transactionService) Initiate(tx models.Transaction) error {
 		},
 	)
 	if err != nil {
-		return errors.New(fmt.Sprintf("failed to publish message: %v", err))
+		return fmt.Errorf("failed to publish message: %v", err)
 	}
 	return nil
+}
+
+func (s *transactionService) Get(transactionID string) (*models.Transaction, error) {
+	return s.repo.Get(transactionID)
+}
+
+func (s *transactionService) UpdateStatus(transactionID string, status string, failureReason string) error {
+	return s.repo.UpdateStatus(transactionID, status, failureReason)
 }

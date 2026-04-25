@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
 
 	"shared/config"
+	"shared/db"
 	"shared/logging"
 	"shared/middleware"
 	"transaction-core-service/internal/controllers"
@@ -29,6 +32,17 @@ func main() {
 
 	// Инициализация зависимостей
 	txRepo := repositories.NewTransactionRepository()
+	if os.Getenv("DATABASE_URL") != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		conn, err := db.Open(ctx)
+		if err != nil {
+			logging.Logger.Warn("PostgreSQL is unavailable, falling back to in-memory transaction repository", zap.Error(err))
+		} else {
+			defer conn.Close()
+			txRepo = repositories.NewPostgresTransactionRepository(conn)
+		}
+	}
 	txSvc := services.NewTransactionService(txRepo)
 	txCtrl := controllers.NewTransactionController(txSvc)
 
@@ -42,6 +56,14 @@ func main() {
 	})
 	// Эндпоинт для инициации транзакции
 	router.POST("/transaction/initiate", txCtrl.InitiateTransaction)
+
+	api := router.Group("/api/transaction")
+	api.POST("/initiate", txCtrl.InitiateTransaction)
+	api.POST("/submit", txCtrl.SubmitTransaction)
+	api.GET("/:transaction_id/status", txCtrl.GetStatus)
+	api.POST("/:transaction_id/cancel", txCtrl.CancelTransaction)
+	api.POST("/:transaction_id/submit", txCtrl.SubmitTransaction)
+	api.GET("/:transaction_id", txCtrl.GetTransaction)
 
 	port := os.Getenv("PORT")
 	if port == "" {
