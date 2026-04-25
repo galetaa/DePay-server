@@ -67,6 +67,64 @@ services:
       timeout: 5s
       retries: 5
 
+  user-service:
+    image: golang:1.24
+    profiles: ["backend"]
+    working_dir: /app/user-service
+    command: go run ./cmd/user-service
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8080
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  transaction-validation-service:
+    image: golang:1.24
+    profiles: ["backend"]
+    working_dir: /app/transaction-validation-service
+    command: go run ./cmd/transaction-validation-service
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8081
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  gas-info-service:
+    image: golang:1.24
+    profiles: ["backend"]
+    working_dir: /app/gas-info-service
+    command: go run ./cmd/gas-info-service
+    environment:
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      GAS_PROVIDER_URL: ${GAS_PROVIDER_URL:-}
+      PORT: 8082
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    ports:
+      - "8082:8082"
+    depends_on:
+      redis:
+        condition: service_healthy
+
   admin-service:
     image: golang:1.24
     profiles: ["backend"]
@@ -78,6 +136,8 @@ services:
       PORT: 8090
     volumes:
       - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
     ports:
       - "8090:8090"
     depends_on:
@@ -90,12 +150,99 @@ services:
     working_dir: /app/merchant-service
     command: go run ./cmd/merchant-service
     environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
       PORT: 8083
     volumes:
       - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
     ports:
       - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  wallet-service:
+    image: golang:1.24
+    profiles: ["backend"]
+    working_dir: /app/wallet-service
+    command: go run ./cmd/wallet-service
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8084
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  transaction-core-service:
+    image: golang:1.24
+    profiles: ["backend"]
+    working_dir: /app/transaction-core-service
+    command: go run ./cmd/transaction-core-service
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-myuser}:${RABBITMQ_DEFAULT_PASS:-mypassword}@rabbitmq:5672/
+      SKIP_RABBITMQ: ${SKIP_RABBITMQ:-false}
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8085
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    ports:
+      - "8085:8085"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  kyc-service:
+    image: golang:1.24
+    profiles: ["backend"]
+    working_dir: /app/kyc-service
+    command: go run ./cmd/kyc-service
+    environment:
+      KYC_PROVIDER_URL: ${KYC_PROVIDER_URL:-}
+      KYC_PROVIDER_API_KEY: ${KYC_PROVIDER_API_KEY:-}
+      KYC_PROVIDER_TIMEOUT_MS: ${KYC_PROVIDER_TIMEOUT_MS:-5000}
+      PORT: 8086
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    ports:
+      - "8086:8086"
+
+  web:
+    image: node:22
+    profiles: ["web"]
+    working_dir: /app/apps/web
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8090}
+    volumes:
+      - .:/app
+      - web-node-modules:/app/apps/web/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - admin-service
 
 volumes:
   pgdata:
+  go-mod-cache:
+  go-build-cache:
+  web-node-modules:
