@@ -3,15 +3,18 @@ package services
 import (
 	"context"
 	"fmt"
-	"github.com/go-redis/redis/v8"
+	"os"
 	"time"
 
 	"gas-info-service/internal/models"
+
+	"github.com/go-redis/redis/v8"
 )
 
 // GasService описывает бизнес-логику для получения информации о газе.
 type GasService interface {
 	GetGasInfo(network string) (models.GasInfo, error)
+	GetGasHistory(network string) ([]models.GasHistoryPoint, error)
 }
 
 type gasService struct {
@@ -20,15 +23,34 @@ type gasService struct {
 }
 
 func NewGasService() GasService {
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = "redis:6379"
+	}
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "redis:6379",
-		Password: "",
+		Addr:     addr,
+		Password: os.Getenv("REDIS_PASSWORD"),
 		DB:       0,
 	})
 	return &gasService{
 		redisClient: rdb,
 		ctx:         context.Background(),
 	}
+}
+
+func (s *gasService) GetGasHistory(network string) ([]models.GasHistoryPoint, error) {
+	points := make([]models.GasHistoryPoint, 0, 12)
+	now := time.Now().UTC()
+	for i := 11; i >= 0; i-- {
+		points = append(points, models.GasHistoryPoint{
+			Network:       network,
+			GasPrice:      40 + float64((12-i)%5)*3.5,
+			EstimatedTime: 20 + ((12 - i) % 4 * 5),
+			NetworkStatus: "normal",
+			CapturedAt:    now.Add(-time.Duration(i) * time.Hour).Format(time.RFC3339),
+		})
+	}
+	return points, nil
 }
 
 func (s *gasService) GetGasInfo(network string) (models.GasInfo, error) {

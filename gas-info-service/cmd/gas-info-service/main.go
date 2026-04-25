@@ -37,6 +37,8 @@ func main() {
 	})
 	// Эндпоинт для получения информации о газе. Ожидается query параметр "network"
 	router.GET("/gas-info", gasCtrl.GetGasInfo)
+	router.GET("/api/transactions/gas-info", gasCtrl.GetGasInfo)
+	router.GET("/api/gas-info/history", gasCtrl.GetGasHistory)
 
 	port := os.Getenv("PORT")
 	if port == "" {
