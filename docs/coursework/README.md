@@ -26,11 +26,30 @@ make seed
 make sql-test
 ```
 
-5. Start admin API and web:
+5. Or prepare seeded backend in one command:
 
 ```bash
-docker compose --profile backend up admin-service
-cd apps/web && npm install && npm run dev
+make dev-ready
+```
+
+6. Start all backend services:
+
+```bash
+make backend-up
+```
+
+7. Start backend plus web:
+
+```bash
+make full-up
+```
+
+8. Run app checks:
+
+```bash
+make test-go
+make web-test
+make web-build
 ```
 
 ## Defense Screens
@@ -41,3 +60,9 @@ cd apps/web && npm install && npm run dev
 - Trigger errors from `database/tests/test_triggers.sql`.
 - Analytics charts in `/admin/analytics`.
 - Demo payment in `/admin/demo`.
+
+## Provider Modes
+
+- Gas data uses a mock provider by default and can call `GAS_PROVIDER_URL`.
+- KYC uses a mock provider by default and can call `KYC_PROVIDER_URL` with `KYC_PROVIDER_API_KEY`.
+- Redis/RabbitMQ remain optional supporting systems; PostgreSQL is the source of truth.

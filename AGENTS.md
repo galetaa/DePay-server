@@ -4,7 +4,7 @@
 
 - This is a multi-module Go monorepo. Each service has its own `go.mod` and uses `replace shared => ../shared`.
 - The repository root is not a Go module. Do not run `go test ./...` from the root.
-- `specs/*.md` describe the target architecture and coursework scope. The current code is a coursework-ready MVP with some pet-project hardening started, not a production-complete system.
+- `specs/*.md` describe the target architecture and coursework scope. The current code is a coursework-ready MVP with the main pet-project gaps closed for local/dev operation.
 - Keep the existing top-level service directories. Do not move services into `services/` unless a task explicitly asks for that refactor.
 
 ## Current Modules and Apps
@@ -33,12 +33,12 @@
   - `config`, `logging`, `middleware`, `utils`
   - `auth`, `db`, `errors`, `events`, `validation`
 - PostgreSQL is the intended source of truth for the coursework MVP.
-- `user-service`, `wallet-service`, and `transaction-core-service` use PostgreSQL repositories when `DATABASE_URL` is set and reachable, with in-memory repositories as local/test fallback.
+- `user-service`, `wallet-service`, `transaction-core-service`, and `merchant-service` use PostgreSQL repositories when `DATABASE_URL` is set and reachable, with in-memory repositories as local/test fallback.
 - `admin-service` is PostgreSQL-backed and is the main API for the coursework web/admin UI.
-- `merchant-service` currently implements the merchant/invoice/terminal MVP with an in-memory repository. Treat PostgreSQL persistence for this service as unfinished pet-project work.
-- `transaction-validation-service` is still mostly stateless validation logic. Deeper database-backed checks for KYC, ownership, merchant verification, blacklist, and risk are planned work.
-- `gas-info-service` uses Redis as optional cache and serves mock/dev gas data plus history API.
-- `kyc-service` remains a stubbed/mock KYC service.
+- `merchant-service` implements merchant registration/login, verification, invoices, and terminals on top of `users`, `stores`, `payment_invoices`, and `terminals`.
+- `transaction-validation-service` uses stateless validation by default and enables PostgreSQL-backed transaction/KYC/ownership/balance/merchant/blacklist/risk checks when `DATABASE_URL` is set.
+- `gas-info-service` uses Redis as optional cache/history storage and supports either mock gas data or an HTTP gas provider via `GAS_PROVIDER_URL`.
+- `kyc-service` uses a fast mock provider by default and can call an HTTP KYC provider via `KYC_PROVIDER_URL` and `KYC_PROVIDER_API_KEY`.
 
 ## Database and SQL Pack
 
@@ -64,11 +64,14 @@
   - `REDIS_PASSWORD`
   - `RABBITMQ_URL`
   - `SKIP_RABBITMQ`
+  - `GAS_PROVIDER_URL`
+  - `KYC_PROVIDER_URL`
+  - `KYC_PROVIDER_API_KEY`
   - `PORT`
 - JWT signing uses `JWT_SECRET` through shared helpers. Do not reintroduce hardcoded secrets.
 - RabbitMQ publishing in `transaction-core-service` is optional and should remain disabled in tests via `SKIP_RABBITMQ=true`.
 - Redis and RabbitMQ are supporting systems, not the source of truth.
-- `docker-compose.yml` provides local infrastructure. Some services may be behind Compose profiles.
+- `docker-compose.yml` provides local infrastructure and `backend`/`web` profiles for full local startup.
 
 ## Developer Workflows
 
@@ -83,6 +86,24 @@ make up
 ```bash
 make migrate-up
 make seed
+```
+
+- Prepare a seeded local backend in one command:
+
+```bash
+make dev-ready
+```
+
+- Start all backend services:
+
+```bash
+make backend-up
+```
+
+- Start backend plus web:
+
+```bash
+make full-up
 ```
 
 - Run SQL tests:
@@ -122,6 +143,12 @@ cd apps/web && npm run dev
 cd apps/web && npm run build
 ```
 
+- Run frontend smoke tests:
+
+```bash
+cd apps/web && npm test
+```
+
 ## API and Routing Notes
 
 - New public/backend endpoints should use the `/api` prefix.
@@ -149,10 +176,8 @@ cd apps/web && npm run build
 - Prefer small, local changes that follow the existing controller/service/repository shape.
 - Do not update generated or IDE files unless the task explicitly requires it.
 
-## Known Remaining Gaps
+## Later Production Work
 
-- `merchant-service` persistence is still in-memory.
-- `transaction-validation-service` does not yet perform all planned PostgreSQL-backed ownership/KYC/merchant/risk checks.
-- Full one-command backend startup for all application services is not yet polished.
-- Frontend has build verification, but no dedicated Vitest/Playwright demo-flow test suite yet.
-- Real blockchain, KYC provider, webhook, observability, Vault, Kong, and Kubernetes production paths remain later-stage work.
+- Real blockchain provider integration should plug into the existing provider/env pattern instead of hardcoding network calls.
+- Merchant webhooks, observability dashboards, Vault, Kong, and Kubernetes production paths remain later-stage work.
+- Keep frontend smoke coverage in Vitest; add Playwright only when the UI flow needs browser-level regression checks.
