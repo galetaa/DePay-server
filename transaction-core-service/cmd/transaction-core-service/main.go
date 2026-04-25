@@ -10,6 +10,7 @@ import (
 	"shared/db"
 	"shared/logging"
 	"shared/middleware"
+	"shared/observability"
 	"transaction-core-service/internal/controllers"
 	"transaction-core-service/internal/repositories"
 	"transaction-core-service/internal/services"
@@ -32,6 +33,7 @@ func main() {
 
 	// Инициализация зависимостей
 	txRepo := repositories.NewTransactionRepository()
+	var txOptions []services.Option
 	if os.Getenv("DATABASE_URL") != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -41,9 +43,10 @@ func main() {
 		} else {
 			defer conn.Close()
 			txRepo = repositories.NewPostgresTransactionRepository(conn)
+			txOptions = append(txOptions, services.WithWebhookDispatcher(services.NewPostgresWebhookDispatcher(conn)))
 		}
 	}
-	txSvc := services.NewTransactionService(txRepo)
+	txSvc := services.NewTransactionService(txRepo, txOptions...)
 	txCtrl := controllers.NewTransactionController(txSvc)
 
 	// Настройка маршрутов
@@ -51,9 +54,11 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
+	router.Use(observability.Middleware("transaction-core-service"))
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	router.GET("/metrics", observability.Handler())
 	// Эндпоинт для инициации транзакции
 	router.POST("/transaction/initiate", txCtrl.InitiateTransaction)
 
@@ -63,6 +68,9 @@ func main() {
 	api.GET("/:transaction_id/status", txCtrl.GetStatus)
 	api.POST("/:transaction_id/cancel", txCtrl.CancelTransaction)
 	api.POST("/:transaction_id/submit", txCtrl.SubmitTransaction)
+	api.POST("/:transaction_id/validate", txCtrl.ValidateTransaction)
+	api.POST("/:transaction_id/broadcast", txCtrl.BroadcastTransaction)
+	api.POST("/:transaction_id/confirm", txCtrl.ConfirmTransaction)
 	api.GET("/:transaction_id", txCtrl.GetTransaction)
 
 	port := os.Getenv("PORT")

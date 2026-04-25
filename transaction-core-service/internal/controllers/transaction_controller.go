@@ -61,6 +61,34 @@ func (tc *TransactionController) SubmitTransaction(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"transaction_id": transactionID, "status": "submitted"}})
 }
 
+func (tc *TransactionController) ValidateTransaction(c *gin.Context) {
+	transactionID := c.Param("transaction_id")
+	if err := tc.service.UpdateStatus(transactionID, "validated", ""); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"transaction_id": transactionID, "status": "validated"}})
+}
+
+func (tc *TransactionController) BroadcastTransaction(c *gin.Context) {
+	transactionID := c.Param("transaction_id")
+	tx, err := tc.service.Broadcast(transactionID)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "data": tx})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": tx})
+}
+
+func (tc *TransactionController) ConfirmTransaction(c *gin.Context) {
+	transactionID := c.Param("transaction_id")
+	if err := tc.service.UpdateStatus(transactionID, "confirmed", ""); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"transaction_id": transactionID, "status": "confirmed"}})
+}
+
 func (tc *TransactionController) GetTransaction(c *gin.Context) {
 	tx, err := tc.service.Get(c.Param("transaction_id"))
 	if err != nil {
@@ -77,9 +105,10 @@ func (tc *TransactionController) GetStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": models.TransactionStatusResponse{
-		TransactionID: tx.TransactionID,
-		Status:        tx.Status,
-		FailureReason: tx.FailureReason,
+		TransactionID:    tx.TransactionID,
+		Status:           tx.Status,
+		FailureReason:    tx.FailureReason,
+		BlockchainTxHash: tx.BlockchainTxHash,
 	}})
 }
 

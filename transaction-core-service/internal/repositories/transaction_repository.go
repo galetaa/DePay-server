@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"sync"
 	"transaction-core-service/internal/models"
@@ -14,6 +15,7 @@ type TransactionRepository interface {
 	Save(tx models.Transaction) error
 	Get(transactionID string) (*models.Transaction, error)
 	UpdateStatus(transactionID string, status string, failureReason string) error
+	MarkBroadcasted(transactionID string, blockchainTxHash string) error
 }
 
 type transactionRepo struct {
@@ -64,6 +66,20 @@ func (r *transactionRepo) UpdateStatus(transactionID string, status string, fail
 	return nil
 }
 
+func (r *transactionRepo) MarkBroadcasted(transactionID string, blockchainTxHash string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	tx, exists := r.data[transactionID]
+	if !exists {
+		return errors.New("transaction not found")
+	}
+	tx.Status = "broadcasted"
+	tx.BlockchainTxHash = blockchainTxHash
+	r.data[transactionID] = tx
+	return nil
+}
+
 type postgresTransactionRepo struct {
 	db *sql.DB
 }
@@ -87,6 +103,15 @@ func (r *postgresTransactionRepo) Save(tx models.Transaction) error {
 		return err
 	}
 
+	var signedPayload any
+	if tx.SignedTransaction != "" {
+		signedPayload = map[string]string{"signed_transaction": tx.SignedTransaction}
+	}
+	signedPayloadBytes, err := json.Marshal(signedPayload)
+	if err != nil {
+		return err
+	}
+
 	_, err = r.db.Exec(`
 		INSERT INTO payment_transactions(
 			external_transaction_id,
@@ -100,6 +125,7 @@ func (r *postgresTransactionRepo) Save(tx models.Transaction) error {
 			amount,
 			amount_in_usdt,
 			status,
+			signed_payload,
 			created_at
 		)
 		VALUES (
@@ -114,9 +140,10 @@ func (r *postgresTransactionRepo) Save(tx models.Transaction) error {
 			$9::numeric,
 			$10::numeric,
 			$11,
-			$12
+			NULLIF($12, 'null')::jsonb,
+			$13
 		)
-	`, tx.TransactionID, refs.InvoiceID, tx.NFCSessionID, refs.UserID, refs.StoreID, refs.AssetID, refs.UserWalletID, refs.StoreWalletID, tx.Amount, refs.AmountUSDT, status, tx.Timestamp)
+	`, tx.TransactionID, refs.InvoiceID, tx.NFCSessionID, refs.UserID, refs.StoreID, refs.AssetID, refs.UserWalletID, refs.StoreWalletID, tx.Amount, refs.AmountUSDT, status, string(signedPayloadBytes), tx.Timestamp)
 	return err
 }
 
@@ -211,7 +238,9 @@ func (r *postgresTransactionRepo) Get(transactionID string) (*models.Transaction
 			amount::text,
 			amount_in_usdt::text,
 			status::text,
-			COALESCE(failure_reason, '')
+			COALESCE(failure_reason, ''),
+			COALESCE(signed_payload->>'signed_transaction', ''),
+			COALESCE(blockchain_tx_hash, '')
 		FROM payment_transactions
 		WHERE transaction_id::text = $1
 		   OR external_transaction_id = $1
@@ -226,6 +255,8 @@ func (r *postgresTransactionRepo) Get(transactionID string) (*models.Transaction
 		&tx.AmountUSDT,
 		&tx.Status,
 		&tx.FailureReason,
+		&tx.SignedTransaction,
+		&tx.BlockchainTxHash,
 	)
 	if err != nil {
 		return nil, err
@@ -242,6 +273,27 @@ func (r *postgresTransactionRepo) UpdateStatus(transactionID string, status stri
 		WHERE transaction_id::text = $1
 		   OR external_transaction_id = $1
 	`, transactionID, status, failureReason)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return errors.New("transaction not found")
+	}
+	return nil
+}
+
+func (r *postgresTransactionRepo) MarkBroadcasted(transactionID string, blockchainTxHash string) error {
+	result, err := r.db.Exec(`
+		UPDATE payment_transactions
+		SET status = 'broadcasted',
+		    blockchain_tx_hash = $2
+		WHERE transaction_id::text = $1
+		   OR external_transaction_id = $1
+	`, transactionID, blockchainTxHash)
 	if err != nil {
 		return err
 	}

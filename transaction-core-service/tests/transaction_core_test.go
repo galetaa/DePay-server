@@ -25,6 +25,10 @@ func setupTransactionRouter() *gin.Engine {
 
 	router := gin.New()
 	router.POST("/transaction/initiate", ctrl.InitiateTransaction)
+	router.POST("/api/transaction/:transaction_id/validate", ctrl.ValidateTransaction)
+	router.POST("/api/transaction/:transaction_id/broadcast", ctrl.BroadcastTransaction)
+	router.POST("/api/transaction/:transaction_id/confirm", ctrl.ConfirmTransaction)
+	router.GET("/api/transaction/:transaction_id/status", ctrl.GetStatus)
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -60,4 +64,48 @@ func TestInitiateTransaction(t *testing.T) {
 	err = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
 	assert.Equal(t, "transaction initiated", resp["status"])
+}
+
+func TestTransactionLifecycleBroadcast(t *testing.T) {
+	t.Setenv("SKIP_RABBITMQ", "true")
+
+	router := setupTransactionRouter()
+	tx := models.Transaction{
+		TransactionID: "tx-lifecycle",
+		StoreID:       "store123",
+		Timestamp:     time.Now(),
+		Amount:        "1000000000000000000",
+	}
+	jsonValue, err := json.Marshal(tx)
+	assert.NoError(t, err)
+
+	req, _ := http.NewRequest("POST", "/transaction/initiate", bytes.NewBuffer(jsonValue))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	for _, path := range []string{
+		"/api/transaction/tx-lifecycle/validate",
+		"/api/transaction/tx-lifecycle/broadcast",
+		"/api/transaction/tx-lifecycle/confirm",
+	} {
+		req, _ = http.NewRequest("POST", path, nil)
+		w = httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+	}
+
+	req, _ = http.NewRequest("GET", "/api/transaction/tx-lifecycle/status", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp struct {
+		Data models.TransactionStatusResponse `json:"data"`
+	}
+	err = json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.Equal(t, "confirmed", resp.Data.Status)
+	assert.NotEmpty(t, resp.Data.BlockchainTxHash)
 }
