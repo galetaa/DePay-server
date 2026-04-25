@@ -1,677 +1,532 @@
-openapi: "3.0.3"
+openapi: 3.0.3
 info:
-  title: Crypto NFC Payment API
-  version: "1.1.0"
-  description: >
-    API для крипто-транзакций по NFC. Поддерживаются операции терминалов и клиентских приложений: регистрация, создание транзакций,
-    расчет газа, экспорт кошельков, регистрация пользователей, прохождение KYC и обновление JWT.
+  title: DePay API
+  version: 0.2.0
+  description: Coursework-ready MVP API for DePay services.
 servers:
-  - url: https://api.example.com
-    description: Production server
-  - url: https://staging.api.example.com
-    description: Staging server
-
+  - url: http://localhost:8090
+    description: Admin/analytics service
+  - url: http://localhost:8080
+    description: User service
+  - url: http://localhost:8083
+    description: Merchant service
+  - url: http://localhost:8084
+    description: Wallet service
+  - url: http://localhost:8085
+    description: Transaction core service
 paths:
-  /terminal/register:
-    post:
-      tags:
-        - Terminal
-      summary: Регистрация терминала и получение JWT.
-      description: >
-        Терминал отправляет свои данные (серийный номер и предустановленный секретный ключ). При успешной валидации сервер выдает JWT.
-      requestBody:
-        description: Данные терминала для регистрации.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TerminalRegistrationRequest'
-      responses:
-        '200':
-          description: Терминал успешно зарегистрирован.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '400':
-          description: Некорректный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /terminal/refresh-token:
-    post:
-      tags:
-        - Terminal
-      summary: Обновление JWT для терминала.
-      security:
-        - terminalAuth: []
-      description: >
-        Обновление JWT при помощи существующего токена. Используется для поддержания сессии.
-      requestBody:
-        description: Данные для обновления токена.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RefreshTokenRequest'
-      responses:
-        '200':
-          description: Новый JWT успешно выдан.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '401':
-          description: Неавторизованный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /transaction/initiate:
-    post:
-      tags:
-        - Terminal
-        - Transaction
-      summary: Инициализация транзакции терминалом.
-      security:
-        - terminalAuth: []
-      description: >
-        Терминал создает транзакцию с параметрами (store_id, transaction_id, amount, currency, timestamp)
-        и регистрирует её на сервере.
-      requestBody:
-        description: Данные транзакции, инициированной терминалом.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TransactionInitiateRequest'
-      responses:
-        '200':
-          description: Транзакция успешно создана.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionResponse'
-        '400':
-          description: Некорректный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /transaction/{transaction_id}/status:
+  /health:
     get:
-      tags:
-        - Transaction
-      summary: Получение статуса транзакции.
-      description: >
-        Эндпоинт позволяет получить актуальный статус транзакции по её идентификатору.
-      security:
-        - terminalAuth: []
-        - userAuth: []
-      parameters:
-        - in: path
-          name: transaction_id
-          schema:
-            type: string
-          required: true
-          description: Идентификатор транзакции.
+      summary: Service health check
       responses:
-        '200':
-          description: Статус транзакции успешно получен.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionStatusResponse'
-        '404':
-          description: Транзакция не найдена.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+        "200":
+          description: Service is healthy
 
-  /transactions/gas-info:
+  /api/user/register:
+    post:
+      tags: [User]
+      summary: Register a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRegisterRequest"
+      responses:
+        "200":
+          description: User and tokens
+  /api/user/login:
+    post:
+      tags: [User]
+      summary: Login a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserLoginRequest"
+      responses:
+        "200":
+          description: User and tokens
+  /api/user/refresh-token:
+    post:
+      tags: [User]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: New access token
+  /api/user/me:
     get:
-      tags:
-        - Transaction
-      summary: Получение информации о газе.
-      description: >
-        Эндпоинт возвращает текущую цену газа, оценку времени подтверждения и статус сети для указанного блокчейна.
+      tags: [User]
       security:
-        - terminalAuth: []
-      parameters:
-        - in: query
-          name: network
-          schema:
-            type: string
-            example: ethereum
-          required: false
-          description: Название блокчейна (например, ethereum).
+        - bearerAuth: []
+      summary: Current user profile
       responses:
-        '200':
-          description: Информация о газе успешно получена.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GasInfoResponse'
-        '400':
-          description: Некорректный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /user/register:
-    post:
-      tags:
-        - User
-      summary: Регистрация пользователя.
-      description: >
-        Пользователь регистрируется с использованием email, имени, фамилии и пароля.
-      requestBody:
-        description: Данные для регистрации пользователя.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserRegistrationRequest'
-      responses:
-        '200':
-          description: Пользователь успешно зарегистрирован.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserResponse'
-        '400':
-          description: Некорректный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /user/login:
-    post:
-      tags:
-        - User
-      summary: Вход пользователя и получение JWT.
-      description: >
-        Пользователь авторизуется по email и паролю, сервер возвращает JWT для дальнейших запросов.
-      requestBody:
-        description: Учетные данные пользователя.
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UserLoginRequest'
-      responses:
-        '200':
-          description: Пользователь успешно авторизован, выдан JWT.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '401':
-          description: Неверные учетные данные.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /user/refresh-token:
-    post:
-      tags:
-        - User
-      summary: Обновление JWT для пользователя.
-      description: >
-        Пользователь обновляет JWT для поддержания сессии. Обратите внимание, что доступ к пользовательским эндпоинтам разрешен только через мобильное приложение.
+        "200":
+          description: User profile
+    put:
+      tags: [User]
       security:
-        - userAuth: []
-      parameters:
-        - in: header
-          name: X-Mobile-Client
-          required: true
-          schema:
-            type: string
-          description: Идентификатор мобильного клиента (например, "true").
+        - bearerAuth: []
+      summary: Update current user profile
       requestBody:
-        description: Данные для обновления токена.
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RefreshTokenRequest'
+              $ref: "#/components/schemas/UserProfileUpdateRequest"
       responses:
-        '200':
-          description: Новый JWT успешно выдан.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthResponse'
-        '401':
-          description: Неавторизованный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /user/kyc:
+        "200":
+          description: Updated profile
+  /api/user/kyc:
     post:
-      tags:
-        - User
-        - KYC
-      summary: Инициация KYC проверки.
-      description: >
-        Пользователь отправляет данные для прохождения KYC. Дальнейшая обработка может включать интеграцию с внешними сервисами.
+      tags: [User]
       security:
-        - userAuth: []
-      parameters:
-        - in: header
-          name: X-Mobile-Client
-          required: true
-          schema:
-            type: string
-          description: Идентификатор мобильного клиента.
+        - bearerAuth: []
+      summary: Submit KYC application
       requestBody:
-        description: Данные для KYC проверки.
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/KYCRequest'
+              $ref: "#/components/schemas/KYCSubmitRequest"
       responses:
-        '200':
-          description: KYC запрос успешно обработан.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/KYCResponse'
-        '400':
-          description: Некорректный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /wallets/export:
+        "202":
+          description: KYC pending
+  /api/user/kyc/status:
     get:
-      tags:
-        - Wallet
-      summary: Экспорт данных о кошельках пользователя.
-      description: >
-        Эндпоинт возвращает список всех кошельков, сохраненных локально на устройстве, связанных с пользователем.
+      tags: [User]
       security:
-        - userAuth: []
-      parameters:
-        - in: header
-          name: X-Mobile-Client
-          required: true
-          schema:
-            type: string
-          description: Идентификатор мобильного клиента.
+        - bearerAuth: []
+      summary: Get current KYC status
       responses:
-        '200':
-          description: Данные о кошельках успешно получены.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/WalletResponse'
-        '401':
-          description: Неавторизованный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+        "200":
+          description: KYC status
 
-  /wallet/{address}/balance:
-    get:
-      tags:
-        - Wallet
-      summary: Получение баланса кошелька по адресу.
-      description: >
-        Эндпоинт возвращает текущий баланс указанного кошелька. Можно использовать для проверки баланса перед транзакцией.
-      security:
-        - userAuth: []
-      parameters:
-        - in: path
-          name: address
-          schema:
-            type: string
-          required: true
-          description: Адрес кошелька.
-        - in: header
-          name: X-Mobile-Client
-          required: true
-          schema:
-            type: string
-          description: Идентификатор мобильного клиента.
-      responses:
-        '200':
-          description: Баланс кошелька успешно получен.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WalletBalanceResponse'
-        '404':
-          description: Кошелек не найден.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /transaction/submit:
+  /api/merchant/register:
     post:
-      tags:
-        - Transaction
-      summary: Отправка подписанной транзакции.
-      description: >
-        Клиент отправляет на сервер подписанную транзакцию вместе с исходными данными для валидации.
-        Помимо стандартных данных, клиент передает адрес отправителя, валюту и текущий баланс для проверки возможности совершения транзакции.
-      security:
-        - userAuth: []
-      parameters:
-        - in: header
-          name: X-Mobile-Client
-          required: true
-          schema:
-            type: string
-          description: Идентификатор мобильного клиента.
+      tags: [Merchant]
+      summary: Register merchant
       requestBody:
-        description: Данные подписанной транзакции.
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TransactionSubmitRequest'
+              $ref: "#/components/schemas/MerchantRegisterRequest"
       responses:
-        '200':
-          description: Транзакция успешно принята сервером.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransactionResponse'
-        '400':
-          description: Некорректный запрос.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+        "201":
+          description: Merchant and tokens
+  /api/merchant/login:
+    post:
+      tags: [Merchant]
+      summary: Login merchant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MerchantLoginRequest"
+      responses:
+        "200":
+          description: Merchant and tokens
+  /api/merchant/me:
+    get:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: Current merchant profile
+      responses:
+        "200":
+          description: Merchant profile
+  /api/merchant/verification:
+    post:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: Submit merchant verification
+      responses:
+        "202":
+          description: Verification pending
+  /api/merchant/verification/status:
+    get:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: Merchant verification status
+      responses:
+        "200":
+          description: Verification status
+  /api/merchant/invoices:
+    post:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: Create invoice
+      responses:
+        "201":
+          description: Invoice created
+    get:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: List invoices
+      responses:
+        "200":
+          description: Invoices
+  /api/merchant/terminals:
+    post:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: Create terminal
+      responses:
+        "201":
+          description: Terminal created
+    get:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: List terminals
+      responses:
+        "200":
+          description: Terminals
 
+  /api/wallets:
+    post:
+      tags: [Wallet]
+      summary: Create wallet
+      responses:
+        "201":
+          description: Wallet created
+    get:
+      tags: [Wallet]
+      summary: List wallets
+      responses:
+        "200":
+          description: Wallet list
+  /api/wallets/{wallet_id}:
+    get:
+      tags: [Wallet]
+      summary: Get wallet
+      parameters:
+        - $ref: "#/components/parameters/WalletID"
+      responses:
+        "200":
+          description: Wallet
+    delete:
+      tags: [Wallet]
+      summary: Delete wallet
+      parameters:
+        - $ref: "#/components/parameters/WalletID"
+      responses:
+        "204":
+          description: Deleted
+  /api/wallets/{wallet_id}/balances:
+    get:
+      tags: [Wallet]
+      summary: Wallet balances
+      parameters:
+        - $ref: "#/components/parameters/WalletID"
+      responses:
+        "200":
+          description: Balances
+  /api/wallets/{wallet_id}/sync:
+    post:
+      tags: [Wallet]
+      summary: Schedule wallet sync
+      parameters:
+        - $ref: "#/components/parameters/WalletID"
+      responses:
+        "202":
+          description: Sync scheduled
+  /api/wallets/{address}/balance:
+    get:
+      tags: [Wallet]
+      summary: Balance by wallet address
+      parameters:
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Balance
+
+  /api/transaction/initiate:
+    post:
+      tags: [Transaction]
+      summary: Initiate transaction
+      responses:
+        "200":
+          description: Transaction initiated
+  /api/transaction/submit:
+    post:
+      tags: [Transaction]
+      summary: Submit transaction
+      responses:
+        "200":
+          description: Transaction submitted
+  /api/transaction/validate:
+    post:
+      tags: [Transaction]
+      summary: Validate signed transaction
+      responses:
+        "200":
+          description: Validation success
+  /api/transaction/{transaction_id}:
+    get:
+      tags: [Transaction]
+      summary: Get transaction
+      parameters:
+        - $ref: "#/components/parameters/TransactionID"
+      responses:
+        "200":
+          description: Transaction
+  /api/transaction/{transaction_id}/status:
+    get:
+      tags: [Transaction]
+      summary: Get transaction status
+      parameters:
+        - $ref: "#/components/parameters/TransactionID"
+      responses:
+        "200":
+          description: Transaction status
+  /api/transaction/{transaction_id}/cancel:
+    post:
+      tags: [Transaction]
+      summary: Cancel transaction
+      parameters:
+        - $ref: "#/components/parameters/TransactionID"
+      responses:
+        "200":
+          description: Cancelled
+
+  /api/transactions/gas-info:
+    get:
+      tags: [Gas]
+      summary: Current gas info
+      parameters:
+        - name: network
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Gas info
+  /api/gas-info/history:
+    get:
+      tags: [Gas]
+      summary: Gas history
+      responses:
+        "200":
+          description: Gas history
+
+  /api/admin/tables:
+    get:
+      tags: [Admin]
+      summary: List allowed tables and views
+      responses:
+        "200":
+          description: Table names
+  /api/admin/tables/{table_name}:
+    get:
+      tags: [Admin]
+      summary: Read rows from allowed table or view
+      parameters:
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Table rows
+  /api/admin/functions/{function_name}/execute:
+    post:
+      tags: [Admin]
+      summary: Execute allowed SQL function
+      parameters:
+        - name: function_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                params:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Function result
+  /api/admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: Audit logs
+      responses:
+        "200":
+          description: Audit rows
+  /api/admin/risk-alerts:
+    get:
+      tags: [Admin]
+      summary: Risk alerts
+      responses:
+        "200":
+          description: Risk rows
+  /api/admin/demo/invoices:
+    post:
+      tags: [Admin]
+      summary: Create demo invoice
+      responses:
+        "201":
+          description: Demo invoice
+  /api/admin/demo/payments:
+    post:
+      tags: [Admin]
+      summary: Submit demo payment
+      responses:
+        "200":
+          description: Demo transaction
+  /api/analytics/store-turnover:
+    get:
+      tags: [Analytics]
+      summary: Store turnover chart data
+      responses:
+        "200":
+          description: Turnover rows
+  /api/analytics/transaction-statuses:
+    get:
+      tags: [Analytics]
+      summary: Transaction status chart data
+      responses:
+        "200":
+          description: Status rows
+  /api/analytics/failed-transactions:
+    get:
+      tags: [Analytics]
+      summary: Failed transaction chart data
+      responses:
+        "200":
+          description: Failed rows
+  /api/analytics/rpc-health:
+    get:
+      tags: [Analytics]
+      summary: RPC health chart data
+      responses:
+        "200":
+          description: RPC rows
 components:
   securitySchemes:
-    terminalAuth:
+    bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-    userAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
+  parameters:
+    WalletID:
+      name: wallet_id
+      in: path
+      required: true
+      schema:
+        type: string
+    TransactionID:
+      name: transaction_id
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
-    TerminalRegistrationRequest:
+    UserRegisterRequest:
       type: object
+      required: [email, first_name, last_name, password]
       properties:
-        serial_number:
+        username:
           type: string
-          description: Уникальный серийный номер терминала.
-        secret_key:
-          type: string
-          description: Предустановленный секретный ключ для аутентификации.
-      required:
-        - serial_number
-        - secret_key
-
-    RefreshTokenRequest:
-      type: object
-      properties:
-        token:
-          type: string
-          description: Текущий JWT для обновления.
-      required:
-        - token
-
-    AuthResponse:
-      type: object
-      properties:
-        token:
-          type: string
-          description: JWT токен.
-        expires_in:
-          type: integer
-          description: Время жизни токена в секундах.
-
-    TransactionInitiateRequest:
-      type: object
-      properties:
-        store_id:
-          type: string
-          description: Идентификатор магазина.
-        transaction_id:
-          type: string
-          description: Уникальный идентификатор транзакции.
-        amount:
-          type: string
-          description: Сумма транзакции в wei.
-        currency:
-          type: string
-          description: Валюта (например, ETH).
-        timestamp:
-          type: string
-          format: date-time
-          description: Время создания транзакции.
-      required:
-        - store_id
-        - transaction_id
-        - amount
-        - currency
-        - timestamp
-
-    TransactionResponse:
-      type: object
-      properties:
-        transaction_id:
-          type: string
-        status:
-          type: string
-          enum:
-            - pending
-            - approved
-            - failed
-            - cancelled
-        message:
-          type: string
-          description: Дополнительная информация по транзакции.
-
-    TransactionStatusResponse:
-      type: object
-      properties:
-        transaction_id:
-          type: string
-        status:
-          type: string
-          enum:
-            - pending
-            - approved
-            - failed
-            - cancelled
-        blockchain_tx_id:
-          type: string
-          description: Идентификатор транзакции в блокчейне (если применимо).
-        updated_at:
-          type: string
-          format: date-time
-
-    GasInfoResponse:
-      type: object
-      properties:
-        network:
-          type: string
-          description: Название блокчейна.
-        gas_price:
-          type: number
-          format: float
-          description: Текущая цена газа в Gwei.
-        estimated_time:
-          type: integer
-          description: Оценка времени подтверждения в секундах.
-        network_status:
-          type: string
-          description: Статус сети (например, normal, congested).
-
-    UserRegistrationRequest:
-      type: object
-      properties:
         email:
           type: string
-          description: Email пользователя.
-        fname:
+          format: email
+        phone_number:
           type: string
-          description: Имя пользователя.
-        sname:
+        first_name:
           type: string
-          description: Фамилия пользователя.
+        last_name:
+          type: string
         password:
           type: string
-          description: Пароль для доступа.
-      required:
-        - email
-        - fname
-        - sname
-        - password
-
+          format: password
     UserLoginRequest:
       type: object
+      required: [email, password]
       properties:
         email:
           type: string
+          format: email
         password:
           type: string
-      required:
-        - email
-        - password
-
-    UserResponse:
+          format: password
+    UserProfileUpdateRequest:
       type: object
       properties:
-        user_id:
+        username:
           type: string
-        email:
+        phone_number:
           type: string
-        fname:
+        first_name:
           type: string
-        sname:
+        last_name:
           type: string
-        kyc_verified:
-          type: boolean
-
-    KYCRequest:
-      type: object
-      properties:
-        user_id:
-          type: string
-        document_type:
-          type: string
-          description: Тип документа (например, passport, driver_license).
-        document_data:
-          type: string
-          description: Данные документа в виде Base64 строки.
-      required:
-        - user_id
-        - document_type
-        - document_data
-
-    KYCResponse:
-      type: object
-      properties:
-        user_id:
-          type: string
-        kyc_status:
-          type: string
-          enum:
-            - pending
-            - verified
-            - rejected
-        message:
-          type: string
-
-    WalletResponse:
-      type: object
-      properties:
-        wallet_id:
-          type: string
-        user_id:
-          type: string
-        wallet_name:
-          type: string
-        blockchain:
-          type: string
-        addresses:
-          type: object
-          additionalProperties:
-            type: string
-        tokens:
-          type: object
-          additionalProperties:
-            type: string
-
-    WalletBalanceResponse:
-      type: object
-      properties:
         address:
           type: string
-        blockchain:
-          type: string
-        balance:
-          type: string
-          description: Баланс в базовой единице (например, wei).
-
-    TransactionSubmitRequest:
+    KYCSubmitRequest:
       type: object
+      required: [document_type, document_url]
       properties:
-        transaction_id:
+        document_type:
           type: string
-        signed_transaction:
+        document_url:
           type: string
-          description: Подписанные данные транзакции.
-        transaction_data:
-          type: object
-          description: Исходные данные транзакции для валидации.
-          properties:
-            sender_wallet_address:
-              type: string
-            recipient_address:
-              type: string
-            amount:
-              type: string
-              description: Сумма транзакции в wei.
-            currency:
-              type: string
-            timestamp:
-              type: string
-              format: date-time
-            current_balance:
-              type: string
-              description: Текущий баланс пользователя в wei (для валидации).
-          required:
-            - sender_wallet_address
-            - recipient_address
-            - amount
-            - currency
-            - timestamp
-            - current_balance
-      required:
-        - transaction_id
-        - signed_transaction
-        - transaction_data
-
-    ErrorResponse:
+    MerchantRegisterRequest:
       type: object
+      required: [owner_email, password, store_name]
       properties:
-        error:
+        owner_email:
           type: string
-          description: Описание ошибки.
+          format: email
+        password:
+          type: string
+          format: password
+        store_name:
+          type: string
+        legal_name:
+          type: string
+    MerchantLoginRequest:
+      type: object
+      required: [owner_email, password]
+      properties:
+        owner_email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
