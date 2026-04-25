@@ -56,3 +56,21 @@ type Terminal struct {
 type CreateTerminalRequest struct {
 	SerialNumber string `json:"serial_number" binding:"required"`
 }
+
+type Webhook struct {
+	ID            string     `json:"id"`
+	MerchantID    string     `json:"merchant_id"`
+	URL           string     `json:"url"`
+	EventTypes    []string   `json:"event_types"`
+	IsActive      bool       `json:"is_active"`
+	FailureCount  int        `json:"failure_count"`
+	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
+	LastFailureAt *time.Time `json:"last_failure_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+}
+
+type CreateWebhookRequest struct {
+	URL        string   `json:"url" binding:"required,url"`
+	EventTypes []string `json:"event_types"`
+	Secret     string   `json:"secret" binding:"required"`
+}

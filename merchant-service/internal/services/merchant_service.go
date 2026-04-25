@@ -20,6 +20,9 @@ type MerchantService interface {
 	ListInvoices(merchantID string) ([]models.Invoice, error)
 	CreateTerminal(merchantID string, req models.CreateTerminalRequest) (models.Terminal, error)
 	ListTerminals(merchantID string) ([]models.Terminal, error)
+	CreateWebhook(merchantID string, req models.CreateWebhookRequest) (models.Webhook, error)
+	ListWebhooks(merchantID string) ([]models.Webhook, error)
+	DeleteWebhook(merchantID string, webhookID string) error
 }
 
 type merchantService struct {
@@ -82,4 +85,16 @@ func (s *merchantService) CreateTerminal(merchantID string, req models.CreateTer
 
 func (s *merchantService) ListTerminals(merchantID string) ([]models.Terminal, error) {
 	return s.repo.ListTerminals(merchantID)
+}
+
+func (s *merchantService) CreateWebhook(merchantID string, req models.CreateWebhookRequest) (models.Webhook, error) {
+	return s.repo.CreateWebhook(merchantID, req)
+}
+
+func (s *merchantService) ListWebhooks(merchantID string) ([]models.Webhook, error) {
+	return s.repo.ListWebhooks(merchantID)
+}
+
+func (s *merchantService) DeleteWebhook(merchantID string, webhookID string) error {
+	return s.repo.DeleteWebhook(merchantID, webhookID)
 }

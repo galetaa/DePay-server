@@ -124,6 +124,37 @@ func (mc *MerchantController) ListTerminals(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": terminals})
 }
 
+func (mc *MerchantController) CreateWebhook(c *gin.Context) {
+	var req models.CreateWebhookRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	webhook, err := mc.service.CreateWebhook(merchantID(c), req)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": webhook})
+}
+
+func (mc *MerchantController) ListWebhooks(c *gin.Context) {
+	webhooks, err := mc.service.ListWebhooks(merchantID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": webhooks})
+}
+
+func (mc *MerchantController) DeleteWebhook(c *gin.Context) {
+	if err := mc.service.DeleteWebhook(merchantID(c), c.Param("webhook_id")); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func merchantID(c *gin.Context) string {
 	rawClaims, exists := c.Get("claims")
 	if !exists {

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lib/pq"
+
 	"merchant-service/internal/models"
 	"shared/auth"
 )
@@ -21,24 +23,31 @@ type MerchantRepository interface {
 	ListInvoices(merchantID string) ([]models.Invoice, error)
 	CreateTerminal(merchantID string, req models.CreateTerminalRequest) (models.Terminal, error)
 	ListTerminals(merchantID string) ([]models.Terminal, error)
+	CreateWebhook(merchantID string, req models.CreateWebhookRequest) (models.Webhook, error)
+	ListWebhooks(merchantID string) ([]models.Webhook, error)
+	DeleteWebhook(merchantID string, webhookID string) error
 }
 
 type memoryMerchantRepo struct {
-	mu        sync.RWMutex
-	merchants map[string]models.Merchant
-	byEmail   map[string]string
-	invoices  map[string][]models.Invoice
-	terminals map[string][]models.Terminal
-	nextID    int64
+	mu            sync.RWMutex
+	merchants     map[string]models.Merchant
+	byEmail       map[string]string
+	invoices      map[string][]models.Invoice
+	terminals     map[string][]models.Terminal
+	webhooks      map[string][]models.Webhook
+	nextID        int64
+	nextWebhookID int64
 }
 
 func NewMerchantRepository() MerchantRepository {
 	return &memoryMerchantRepo{
-		merchants: make(map[string]models.Merchant),
-		byEmail:   make(map[string]string),
-		invoices:  make(map[string][]models.Invoice),
-		terminals: make(map[string][]models.Terminal),
-		nextID:    1,
+		merchants:     make(map[string]models.Merchant),
+		byEmail:       make(map[string]string),
+		invoices:      make(map[string][]models.Invoice),
+		terminals:     make(map[string][]models.Terminal),
+		webhooks:      make(map[string][]models.Webhook),
+		nextID:        1,
+		nextWebhookID: 1,
 	}
 }
 
@@ -149,6 +158,51 @@ func (r *memoryMerchantRepo) ListTerminals(merchantID string) ([]models.Terminal
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.terminals[merchantID], nil
+}
+
+func (r *memoryMerchantRepo) CreateWebhook(merchantID string, req models.CreateWebhookRequest) (models.Webhook, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	merchant, exists := r.merchants[merchantID]
+	if !exists {
+		return models.Webhook{}, errors.New("merchant not found")
+	}
+	if merchant.VerificationStatus != "approved" {
+		return models.Webhook{}, errors.New("merchant verification is required")
+	}
+	webhook := models.Webhook{
+		ID:           strconv.FormatInt(r.nextWebhookID, 10),
+		MerchantID:   merchantID,
+		URL:          req.URL,
+		EventTypes:   defaultWebhookEvents(req.EventTypes),
+		IsActive:     true,
+		FailureCount: 0,
+		CreatedAt:    time.Now().UTC(),
+	}
+	r.nextWebhookID++
+	r.webhooks[merchantID] = append(r.webhooks[merchantID], webhook)
+	return webhook, nil
+}
+
+func (r *memoryMerchantRepo) ListWebhooks(merchantID string) ([]models.Webhook, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.webhooks[merchantID], nil
+}
+
+func (r *memoryMerchantRepo) DeleteWebhook(merchantID string, webhookID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	webhooks := r.webhooks[merchantID]
+	for i, webhook := range webhooks {
+		if webhook.ID == webhookID {
+			r.webhooks[merchantID] = append(webhooks[:i], webhooks[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("webhook not found")
 }
 
 type postgresMerchantRepo struct {
@@ -391,6 +445,103 @@ func (r *postgresMerchantRepo) ListTerminals(merchantID string) ([]models.Termin
 	return terminals, rows.Err()
 }
 
+func (r *postgresMerchantRepo) CreateWebhook(merchantID string, req models.CreateWebhookRequest) (models.Webhook, error) {
+	if err := r.ensureApprovedMerchant(context.Background(), merchantID); err != nil {
+		return models.Webhook{}, err
+	}
+
+	secretHash := auth.HashToken(req.Secret)
+	events := defaultWebhookEvents(req.EventTypes)
+	var webhook models.Webhook
+	var lastSuccessAt sql.NullTime
+	var lastFailureAt sql.NullTime
+	webhook.MerchantID = merchantID
+	err := r.db.QueryRowContext(context.Background(), `
+		INSERT INTO merchant_webhooks(store_id, url, event_types, secret_hash, is_active)
+		VALUES ($1, $2, $3, $4, true)
+		RETURNING webhook_id::text, url, event_types, is_active, failure_count, last_success_at, last_failure_at, created_at
+	`, merchantID, req.URL, pq.Array(events), secretHash).Scan(
+		&webhook.ID,
+		&webhook.URL,
+		(*pq.StringArray)(&webhook.EventTypes),
+		&webhook.IsActive,
+		&webhook.FailureCount,
+		&lastSuccessAt,
+		&lastFailureAt,
+		&webhook.CreatedAt,
+	)
+	if err != nil {
+		return models.Webhook{}, err
+	}
+	if lastSuccessAt.Valid {
+		webhook.LastSuccessAt = &lastSuccessAt.Time
+	}
+	if lastFailureAt.Valid {
+		webhook.LastFailureAt = &lastFailureAt.Time
+	}
+	return webhook, nil
+}
+
+func (r *postgresMerchantRepo) ListWebhooks(merchantID string) ([]models.Webhook, error) {
+	rows, err := r.db.QueryContext(context.Background(), `
+		SELECT webhook_id::text, store_id::text, url, event_types, is_active, failure_count, last_success_at, last_failure_at, created_at
+		FROM merchant_webhooks
+		WHERE store_id = $1
+		ORDER BY created_at DESC, webhook_id DESC
+	`, merchantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	webhooks := make([]models.Webhook, 0)
+	for rows.Next() {
+		var webhook models.Webhook
+		var lastSuccessAt sql.NullTime
+		var lastFailureAt sql.NullTime
+		if err := rows.Scan(
+			&webhook.ID,
+			&webhook.MerchantID,
+			&webhook.URL,
+			(*pq.StringArray)(&webhook.EventTypes),
+			&webhook.IsActive,
+			&webhook.FailureCount,
+			&lastSuccessAt,
+			&lastFailureAt,
+			&webhook.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if lastSuccessAt.Valid {
+			webhook.LastSuccessAt = &lastSuccessAt.Time
+		}
+		if lastFailureAt.Valid {
+			webhook.LastFailureAt = &lastFailureAt.Time
+		}
+		webhooks = append(webhooks, webhook)
+	}
+	return webhooks, rows.Err()
+}
+
+func (r *postgresMerchantRepo) DeleteWebhook(merchantID string, webhookID string) error {
+	result, err := r.db.ExecContext(context.Background(), `
+		DELETE FROM merchant_webhooks
+		WHERE store_id = $1
+		  AND webhook_id = $2
+	`, merchantID, webhookID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return errors.New("webhook not found")
+	}
+	return nil
+}
+
 func (r *postgresMerchantRepo) ensureApprovedMerchant(ctx context.Context, merchantID string) error {
 	var status string
 	err := r.db.QueryRowContext(ctx, `
@@ -408,4 +559,18 @@ func (r *postgresMerchantRepo) ensureApprovedMerchant(ctx context.Context, merch
 		return errors.New("merchant verification is required")
 	}
 	return nil
+}
+
+func defaultWebhookEvents(events []string) []string {
+	if len(events) > 0 {
+		return events
+	}
+	return []string{
+		"transaction.created",
+		"transaction.submitted",
+		"transaction.validated",
+		"transaction.broadcasted",
+		"transaction.confirmed",
+		"transaction.failed",
+	}
 }
