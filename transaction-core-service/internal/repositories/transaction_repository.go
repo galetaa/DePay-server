@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"sync"
@@ -80,7 +81,13 @@ func (r *postgresTransactionRepo) Save(tx models.Transaction) error {
 	if amountUSDT == "" {
 		amountUSDT = tx.Amount
 	}
-	_, err := r.db.Exec(`
+
+	refs, err := r.resolveReferences(context.Background(), tx, amountUSDT)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.Exec(`
 		INSERT INTO payment_transactions(
 			external_transaction_id,
 			invoice_id,
@@ -99,18 +106,96 @@ func (r *postgresTransactionRepo) Save(tx models.Transaction) error {
 			$1,
 			NULLIF($2, '')::bigint,
 			NULLIF($3, '')::bigint,
-			NULLIF($4, '')::bigint,
+			$4::bigint,
 			$5::bigint,
-			1,
-			1,
-			16,
-			$6::numeric,
-			$7::numeric,
-			$8,
-			$9
+			$6::bigint,
+			$7::bigint,
+			$8::bigint,
+			$9::numeric,
+			$10::numeric,
+			$11,
+			$12
 		)
-	`, tx.TransactionID, tx.InvoiceID, tx.NFCSessionID, tx.UserID, tx.StoreID, tx.Amount, amountUSDT, status, tx.Timestamp)
+	`, tx.TransactionID, refs.InvoiceID, tx.NFCSessionID, refs.UserID, refs.StoreID, refs.AssetID, refs.UserWalletID, refs.StoreWalletID, tx.Amount, refs.AmountUSDT, status, tx.Timestamp)
 	return err
+}
+
+type transactionReferences struct {
+	InvoiceID     string
+	UserID        string
+	StoreID       string
+	AmountUSDT    string
+	AssetID       int64
+	UserWalletID  int64
+	StoreWalletID int64
+}
+
+func (r *postgresTransactionRepo) resolveReferences(ctx context.Context, tx models.Transaction, amountUSDT string) (transactionReferences, error) {
+	refs := transactionReferences{
+		InvoiceID:  tx.InvoiceID,
+		UserID:     tx.UserID,
+		StoreID:    tx.StoreID,
+		AmountUSDT: amountUSDT,
+	}
+
+	if refs.InvoiceID != "" {
+		var invoiceUserID sql.NullString
+		var invoiceStoreID string
+		var invoiceAmountUSDT string
+		err := r.db.QueryRowContext(ctx, `
+			SELECT COALESCE(user_id::text, ''), store_id::text, amount_usdt::text
+			FROM payment_invoices
+			WHERE invoice_id = $1::bigint
+		`, refs.InvoiceID).Scan(&invoiceUserID, &invoiceStoreID, &invoiceAmountUSDT)
+		if err != nil {
+			return transactionReferences{}, err
+		}
+		if refs.UserID == "" && invoiceUserID.Valid {
+			refs.UserID = invoiceUserID.String
+		}
+		if refs.StoreID == "" {
+			refs.StoreID = invoiceStoreID
+		}
+		if refs.AmountUSDT == "" {
+			refs.AmountUSDT = invoiceAmountUSDT
+		}
+	}
+
+	if refs.UserID == "" {
+		return transactionReferences{}, errors.New("user_id is required")
+	}
+	if refs.StoreID == "" {
+		return transactionReferences{}, errors.New("store_id is required")
+	}
+
+	currency := tx.Currency
+	if currency == "" {
+		currency = "ETH"
+	}
+
+	err := r.db.QueryRowContext(ctx, `
+		SELECT uw.wallet_id, sw.wallet_id, a.asset_id
+		FROM wallets uw
+		JOIN wallets sw
+		  ON sw.store_id = $2::bigint
+		 AND sw.is_store_wallet = true
+		 AND sw.chain_id = uw.chain_id
+		JOIN assets a
+		  ON a.chain_id = uw.chain_id
+		 AND upper(a.symbol) = upper($3)
+		WHERE uw.user_id = $1::bigint
+		  AND uw.is_store_wallet = false
+		ORDER BY uw.wallet_id, sw.wallet_id, a.asset_id
+		LIMIT 1
+	`, refs.UserID, refs.StoreID, currency).Scan(&refs.UserWalletID, &refs.StoreWalletID, &refs.AssetID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return transactionReferences{}, errors.New("matching user/store wallets and asset were not found")
+		}
+		return transactionReferences{}, err
+	}
+
+	return refs, nil
 }
 
 func (r *postgresTransactionRepo) Get(transactionID string) (*models.Transaction, error) {
