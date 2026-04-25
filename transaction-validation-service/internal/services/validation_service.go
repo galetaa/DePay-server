@@ -2,7 +2,9 @@ package services
 
 import (
 	"errors"
+	"strings"
 
+	"shared/validation"
 	"transaction-validation-service/internal/models"
 )
 
@@ -25,9 +27,17 @@ func (s *validationService) Validate(req models.ValidationRequest) error {
 	if req.Amount == "0" {
 		return errors.New("insufficient funds")
 	}
-	// Имитируем базовую проверку адресов: они должны иметь определённую длину (например, 42 символа для Ethereum)
-	if len(req.SenderAddress) != 42 || len(req.RecipientAddress) != 42 {
-		return errors.New("invalid address format")
+	if err := validation.PositiveAmount(req.Amount); err != nil {
+		return err
+	}
+	if err := validation.EVMAddress(req.SenderAddress); err != nil {
+		return err
+	}
+	if err := validation.EVMAddress(req.RecipientAddress); err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.SignedData) == "" {
+		return errors.New("signature is required")
 	}
 	// Если всё корректно, возвращаем nil (успешно)
 	return nil

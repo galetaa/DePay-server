@@ -37,6 +37,7 @@ func main() {
 	})
 	// Эндпоинт для проверки валидности транзакции
 	router.POST("/transaction/validate", validationCtrl.ValidateTransaction)
+	router.POST("/api/transaction/validate", validationCtrl.ValidateTransaction)
 
 	port := os.Getenv("PORT")
 	if port == "" {
