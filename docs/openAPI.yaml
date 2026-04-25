@@ -200,6 +200,44 @@ paths:
       responses:
         "200":
           description: Terminals
+  /api/merchant/webhooks:
+    post:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: Register merchant webhook endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookRequest"
+      responses:
+        "201":
+          description: Webhook registered
+    get:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: List merchant webhooks
+      responses:
+        "200":
+          description: Webhooks
+  /api/merchant/webhooks/{webhook_id}:
+    delete:
+      tags: [Merchant]
+      security:
+        - bearerAuth: []
+      summary: Delete merchant webhook
+      parameters:
+        - name: webhook_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
 
   /api/wallets:
     post:
@@ -243,12 +281,12 @@ paths:
   /api/wallets/{wallet_id}/sync:
     post:
       tags: [Wallet]
-      summary: Schedule wallet sync
+      summary: Sync wallet balance from configured blockchain provider
       parameters:
         - $ref: "#/components/parameters/WalletID"
       responses:
         "202":
-          description: Sync scheduled
+          description: Wallet synced
   /api/wallets/{address}/balance:
     get:
       tags: [Wallet]
@@ -311,6 +349,33 @@ paths:
       responses:
         "200":
           description: Cancelled
+  /api/transaction/{transaction_id}/validate:
+    post:
+      tags: [Transaction]
+      summary: Move transaction to validated
+      parameters:
+        - $ref: "#/components/parameters/TransactionID"
+      responses:
+        "200":
+          description: Transaction validated
+  /api/transaction/{transaction_id}/broadcast:
+    post:
+      tags: [Transaction]
+      summary: Broadcast transaction using configured blockchain RPC provider
+      parameters:
+        - $ref: "#/components/parameters/TransactionID"
+      responses:
+        "200":
+          description: Transaction broadcasted
+  /api/transaction/{transaction_id}/confirm:
+    post:
+      tags: [Transaction]
+      summary: Mark broadcasted transaction as confirmed
+      parameters:
+        - $ref: "#/components/parameters/TransactionID"
+      responses:
+        "200":
+          description: Transaction confirmed
 
   /api/transactions/gas-info:
     get:
@@ -528,5 +593,22 @@ components:
           type: string
           format: email
         password:
+          type: string
+          format: password
+    CreateWebhookRequest:
+      type: object
+      required: [url, secret]
+      properties:
+        url:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          items:
+            type: string
+          example:
+            - transaction.confirmed
+            - transaction.failed
+        secret:
           type: string
           format: password

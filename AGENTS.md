@@ -4,7 +4,7 @@
 
 - This is a multi-module Go monorepo. Each service has its own `go.mod` and uses `replace shared => ../shared`.
 - The repository root is not a Go module. Do not run `go test ./...` from the root.
-- `specs/*.md` describe the target architecture and coursework scope. The current code is a coursework-ready MVP with the main pet-project gaps closed for local/dev operation.
+- `specs/*.md` describe the target architecture and coursework scope. The current code is a coursework-ready MVP plus production-like local/dev paths for providers, webhooks, observability, Kong, Vault, and Kubernetes manifests.
 - Keep the existing top-level service directories. Do not move services into `services/` unless a task explicitly asks for that refactor.
 
 ## Current Modules and Apps
@@ -31,14 +31,17 @@
 - Service shape is consistent: `cmd/<service>/main.go` wires `controller -> service -> repository` where a repository exists.
 - Shared cross-cutting code lives in `shared/`:
   - `config`, `logging`, `middleware`, `utils`
-  - `auth`, `db`, `errors`, `events`, `validation`
+  - `auth`, `db`, `errors`, `events`, `observability`, `validation`
 - PostgreSQL is the intended source of truth for the coursework MVP.
 - `user-service`, `wallet-service`, `transaction-core-service`, and `merchant-service` use PostgreSQL repositories when `DATABASE_URL` is set and reachable, with in-memory repositories as local/test fallback.
+- `wallet-service` can sync balances from EVM JSON-RPC through `WALLET_BALANCE_RPC_URL` or `BLOCKCHAIN_RPC_URL`; without those env vars it uses deterministic mock balances.
 - `admin-service` is PostgreSQL-backed and is the main API for the coursework web/admin UI.
-- `merchant-service` implements merchant registration/login, verification, invoices, and terminals on top of `users`, `stores`, `payment_invoices`, and `terminals`.
+- `merchant-service` implements merchant registration/login, verification, invoices, terminals, and webhook registration on top of PostgreSQL.
+- `transaction-core-service` supports validated -> broadcasted -> confirmed lifecycle endpoints, EVM `eth_sendRawTransaction` via `BLOCKCHAIN_RPC_URL`, mock broadcast fallback, and merchant webhook delivery logging/HTTP delivery via `WEBHOOK_DELIVERY_MODE`.
 - `transaction-validation-service` uses stateless validation by default and enables PostgreSQL-backed transaction/KYC/ownership/balance/merchant/blacklist/risk checks when `DATABASE_URL` is set.
 - `gas-info-service` uses Redis as optional cache/history storage and supports either mock gas data or an HTTP gas provider via `GAS_PROVIDER_URL`.
 - `kyc-service` uses a fast mock provider by default and can call an HTTP KYC provider via `KYC_PROVIDER_URL` and `KYC_PROVIDER_API_KEY`.
+- Every Go service exposes `/health` and Prometheus-compatible `/metrics`.
 
 ## Database and SQL Pack
 
@@ -64,6 +67,9 @@
   - `REDIS_PASSWORD`
   - `RABBITMQ_URL`
   - `SKIP_RABBITMQ`
+  - `BLOCKCHAIN_RPC_URL`
+  - `WALLET_BALANCE_RPC_URL`
+  - `WEBHOOK_DELIVERY_MODE`
   - `GAS_PROVIDER_URL`
   - `KYC_PROVIDER_URL`
   - `KYC_PROVIDER_API_KEY`
@@ -71,7 +77,7 @@
 - JWT signing uses `JWT_SECRET` through shared helpers. Do not reintroduce hardcoded secrets.
 - RabbitMQ publishing in `transaction-core-service` is optional and should remain disabled in tests via `SKIP_RABBITMQ=true`.
 - Redis and RabbitMQ are supporting systems, not the source of truth.
-- `docker-compose.yml` provides local infrastructure and `backend`/`web` profiles for full local startup.
+- `docker-compose.yml` provides local infrastructure and `backend`, `web`, `gateway`, `observability`, and `secrets` profiles.
 
 ## Developer Workflows
 
@@ -104,6 +110,12 @@ make backend-up
 
 ```bash
 make full-up
+```
+
+- Start production-like local stack:
+
+```bash
+make prod-like-up
 ```
 
 - Run SQL tests:
@@ -171,13 +183,17 @@ cd apps/web && npm test
   - `CORSMiddleware()`
   - `ErrorHandlerMiddleware()`
 - Preserve `/health` on each service.
+- Preserve `/metrics` on each service.
 - Keep Redis and RabbitMQ optional for local development and tests.
 - Use in-memory repositories for tests where that keeps the test focused, but do not add new production storage paths that bypass PostgreSQL.
 - Prefer small, local changes that follow the existing controller/service/repository shape.
 - Do not update generated or IDE files unless the task explicitly requires it.
 
-## Later Production Work
+## Production-Like Paths
 
-- Real blockchain provider integration should plug into the existing provider/env pattern instead of hardcoding network calls.
-- Merchant webhooks, observability dashboards, Vault, Kong, and Kubernetes production paths remain later-stage work.
+- Blockchain calls are provider-driven through env (`BLOCKCHAIN_RPC_URL`, `WALLET_BALANCE_RPC_URL`) and must keep mock fallbacks for local/tests.
+- Merchant webhooks are registered through `/api/merchant/webhooks`; transaction-core records delivery attempts and can deliver HTTP callbacks when `WEBHOOK_DELIVERY_MODE=http`.
+- Observability is available through `/metrics`, the `observability` compose profile, and `k8s/observability.yaml`.
+- Kong declarative routing lives in `kong/kong.yml` and `k8s/kong.yaml`.
+- Vault bootstrap lives in `server-config/setup_vault_and_kong.sh` and `k8s/vault.yaml`.
 - Keep frontend smoke coverage in Vitest; add Playwright only when the UI flow needs browser-level regression checks.

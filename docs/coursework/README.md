@@ -44,7 +44,13 @@ make backend-up
 make full-up
 ```
 
-8. Run app checks:
+8. Start production-like local stack:
+
+```bash
+make prod-like-up
+```
+
+9. Run app checks:
 
 ```bash
 make test-go
@@ -65,4 +71,9 @@ make web-build
 
 - Gas data uses a mock provider by default and can call `GAS_PROVIDER_URL`.
 - KYC uses a mock provider by default and can call `KYC_PROVIDER_URL` with `KYC_PROVIDER_API_KEY`.
+- Transaction broadcasting uses mock hashes by default and can call EVM JSON-RPC via `BLOCKCHAIN_RPC_URL`.
+- Wallet sync uses deterministic mock balances by default and can call EVM JSON-RPC via `WALLET_BALANCE_RPC_URL` or `BLOCKCHAIN_RPC_URL`.
+- Merchant webhooks are registered under `/api/merchant/webhooks`; delivery is logged by default and switches to HTTP with `WEBHOOK_DELIVERY_MODE=http`.
+- Each backend exposes `/metrics`; Prometheus and Grafana run with `make observability-up`.
+- Kong runs with `make gateway-up`; Vault dev bootstrap runs with `make secrets-up`.
 - Redis/RabbitMQ remain optional supporting systems; PostgreSQL is the source of truth.
