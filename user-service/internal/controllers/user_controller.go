@@ -2,13 +2,12 @@ package controllers
 
 import (
 	"net/http"
-	"time"
 
-	"shared/utils"
 	"user-service/internal/models"
 	"user-service/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 type UserController struct {
@@ -35,15 +34,16 @@ func (uc *UserController) Register(c *gin.Context) {
 		return
 	}
 
-	token, err := utils.GenerateToken(user.ID, 24*time.Hour)
+	pair, err := uc.service.IssueTokenPair(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"user":  user,
-		"token": token,
+		"user":          user,
+		"token":         pair.AccessToken,
+		"refresh_token": pair.RefreshToken,
 	})
 }
 
@@ -61,15 +61,16 @@ func (uc *UserController) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := utils.GenerateToken(user.ID, 24*time.Hour)
+	pair, err := uc.service.IssueTokenPair(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"user":  user,
-		"token": token,
+		"user":          user,
+		"token":         pair.AccessToken,
+		"refresh_token": pair.RefreshToken,
 	})
 }
 
@@ -88,4 +89,92 @@ func (uc *UserController) RefreshToken(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"token": newToken})
+}
+
+func (uc *UserController) Me(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+		return
+	}
+
+	user, err := uc.service.GetMe(userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": user})
+}
+
+func (uc *UserController) UpdateMe(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+		return
+	}
+
+	var req models.UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	user, err := uc.service.UpdateMe(userID, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": user})
+}
+
+func (uc *UserController) SubmitKYC(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+		return
+	}
+
+	var req models.SubmitKYCRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if err := uc.service.SubmitKYC(userID, req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{"status": "pending"}})
+}
+
+func (uc *UserController) KYCStatus(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+		return
+	}
+
+	status, err := uc.service.GetKYCStatus(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"kyc_status": status}})
+}
+
+func userIDFromContext(c *gin.Context) (string, bool) {
+	rawClaims, exists := c.Get("claims")
+	if !exists {
+		return "", false
+	}
+	claims, ok := rawClaims.(jwt.MapClaims)
+	if !ok {
+		return "", false
+	}
+	sub, ok := claims["sub"].(string)
+	return sub, ok && sub != ""
 }

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
 
 	"shared/config"
+	"shared/db"
 	"shared/logging"
 	"shared/middleware"
 	"user-service/internal/controllers"
@@ -31,7 +34,18 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 
 	// Инициализируем слои приложения
-	userRepo := repositories.NewUserRepository() // В продакшене подключение к PostgreSQL через GORM/sqlx
+	userRepo := repositories.NewUserRepository()
+	if os.Getenv("DATABASE_URL") != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		conn, err := db.Open(ctx)
+		if err != nil {
+			logging.Logger.Warn("PostgreSQL is unavailable, falling back to in-memory user repository", zap.Error(err))
+		} else {
+			defer conn.Close()
+			userRepo = repositories.NewPostgresUserRepository(conn)
+		}
+	}
 	userSvc := services.NewUserService(userRepo)
 	userCtrl := controllers.NewUserController(userSvc)
 
@@ -50,6 +64,18 @@ func main() {
 	router.POST("/user/register", userCtrl.Register)
 	router.POST("/user/login", userCtrl.Login)
 	router.POST("/user/refresh-token", userCtrl.RefreshToken)
+
+	api := router.Group("/api")
+	userAPI := api.Group("/user")
+	userAPI.POST("/register", userCtrl.Register)
+	userAPI.POST("/login", userCtrl.Login)
+	userAPI.POST("/refresh-token", userCtrl.RefreshToken)
+	protectedUserAPI := userAPI.Group("")
+	protectedUserAPI.Use(middleware.JWTAuthMiddleware())
+	protectedUserAPI.GET("/me", userCtrl.Me)
+	protectedUserAPI.PUT("/me", userCtrl.UpdateMe)
+	protectedUserAPI.POST("/kyc", userCtrl.SubmitKYC)
+	protectedUserAPI.GET("/kyc/status", userCtrl.KYCStatus)
 
 	port := os.Getenv("PORT")
 	if port == "" {
