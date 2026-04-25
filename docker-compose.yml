@@ -1,13 +1,11 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:13
     restart: always
     environment:
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mypassword
-      POSTGRES_DB: mydatabase
+      POSTGRES_USER: ${POSTGRES_USER:-myuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mypassword}
+      POSTGRES_DB: ${POSTGRES_DB:-mydatabase}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -32,6 +30,9 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-myuser}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-mypassword}
     ports:
       - "5672:5672"   # AMQP
       - "15672:15672" # Management UI
@@ -43,6 +44,7 @@ services:
 
   kong:
     image: kong:2.7
+    profiles: ["gateway"]
     restart: always
     environment:
       KONG_DATABASE: "off"
@@ -64,6 +66,36 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  admin-service:
+    image: golang:1.24
+    profiles: ["backend"]
+    working_dir: /app/admin-service
+    command: go run ./cmd/admin-service
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8090
+    volumes:
+      - .:/app
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  merchant-service:
+    image: golang:1.24
+    profiles: ["backend"]
+    working_dir: /app/merchant-service
+    command: go run ./cmd/merchant-service
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8083
+    volumes:
+      - .:/app
+    ports:
+      - "8083:8083"
 
 volumes:
   pgdata:

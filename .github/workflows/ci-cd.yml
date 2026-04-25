@@ -20,6 +20,9 @@ jobs:
           - transaction-core-service
           - transaction-validation-service
           - gas-info-service
+          - kyc-service
+          - merchant-service
+          - admin-service
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -34,4 +37,4 @@ jobs:
         run: |
           go mod download
           CGO_ENABLED=0 go build -o app ./cmd/${{ matrix.service }}/main.go
-          go test -v ./tests
+          go test -v ./...
