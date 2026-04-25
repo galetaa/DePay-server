@@ -68,7 +68,12 @@ func (wc *WalletController) GetWalletBalances(c *gin.Context) {
 }
 
 func (wc *WalletController) SyncWallet(c *gin.Context) {
-	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{"status": "sync_scheduled", "wallet_id": c.Param("wallet_id")}})
+	resp, err := wc.service.SyncWallet(c.Param("wallet_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{"status": "synced", "wallet_id": c.Param("wallet_id"), "balance": resp}})
 }
 
 func (wc *WalletController) GetBalanceByAddress(c *gin.Context) {

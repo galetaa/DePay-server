@@ -10,6 +10,7 @@ import (
 	"shared/db"
 	"shared/logging"
 	"shared/middleware"
+	"shared/observability"
 	"wallet-service/internal/controllers"
 	"wallet-service/internal/repositories"
 	"wallet-service/internal/services"
@@ -54,11 +55,13 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
+	router.Use(observability.Middleware("wallet-service"))
 
 	// Эндпоинт проверки работоспособности сервиса
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	router.GET("/metrics", observability.Handler())
 
 	// Эндпоинты Wallet Service
 	router.GET("/wallet/export", walletCtrl.ExportWallets)

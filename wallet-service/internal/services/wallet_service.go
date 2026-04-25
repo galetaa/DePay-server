@@ -20,12 +20,14 @@ type WalletService interface {
 	GetWallet(id string) (models.Wallet, error)
 	DeleteWallet(id string) error
 	GetWalletBalances(walletID string) ([]models.WalletBalance, error)
+	SyncWallet(walletID string) (models.BalanceResponse, error)
 }
 
 type walletService struct {
-	repo        repositories.WalletRepository
-	redisClient *redis.Client
-	ctx         context.Context
+	repo            repositories.WalletRepository
+	redisClient     *redis.Client
+	ctx             context.Context
+	balanceProvider BalanceProvider
 }
 
 func NewWalletService(repo repositories.WalletRepository) WalletService {
@@ -40,9 +42,10 @@ func NewWalletService(repo repositories.WalletRepository) WalletService {
 	})
 
 	return &walletService{
-		repo:        repo,
-		redisClient: rdb,
-		ctx:         context.Background(),
+		repo:            repo,
+		redisClient:     rdb,
+		ctx:             context.Background(),
+		balanceProvider: NewBalanceProviderFromEnv(),
 	}
 }
 
@@ -56,7 +59,10 @@ func (s *walletService) GetBalance(req models.BalanceRequest) (models.BalanceRes
 	cacheKey := fmt.Sprintf("balance:%s", req.Address)
 	balance, err := s.redisClient.Get(s.ctx, cacheKey).Result()
 	if err != nil { // если ошибка (в том числе redis.Nil) – получаем значение из Blockchain Module
-		balance = getBalanceFromBlockchain(req.Address)
+		balance, err = s.balanceProvider.GetBalance(s.ctx, req.Address)
+		if err != nil {
+			return models.BalanceResponse{}, err
+		}
 		// Пытаемся кэшировать результат, ошибки игнорируем
 		_ = s.redisClient.Set(s.ctx, cacheKey, balance, 60*time.Second)
 	}
@@ -84,8 +90,17 @@ func (s *walletService) GetWalletBalances(walletID string) ([]models.WalletBalan
 	return s.repo.GetBalances(s.ctx, walletID)
 }
 
-// Имитация вызова к Blockchain Module для получения баланса
-func getBalanceFromBlockchain(address string) string {
-	// Возвращаем фиксированное значение (например, 1 ETH в wei)
-	return "1000000000000000000"
+func (s *walletService) SyncWallet(walletID string) (models.BalanceResponse, error) {
+	wallet, err := s.repo.GetByID(s.ctx, walletID)
+	if err != nil {
+		return models.BalanceResponse{}, err
+	}
+	resp, err := s.GetBalance(models.BalanceRequest{Address: wallet.Address})
+	if err != nil {
+		return models.BalanceResponse{}, err
+	}
+	if err := s.repo.UpsertNativeBalance(s.ctx, walletID, resp.Balance); err != nil {
+		return models.BalanceResponse{}, err
+	}
+	return resp, nil
 }

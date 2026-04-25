@@ -17,6 +17,7 @@ type WalletRepository interface {
 	GetByID(ctx context.Context, id string) (models.Wallet, error)
 	Delete(ctx context.Context, id string) error
 	GetBalances(ctx context.Context, walletID string) ([]models.WalletBalance, error)
+	UpsertNativeBalance(ctx context.Context, walletID string, balance string) error
 }
 
 type walletRepo struct {
@@ -118,6 +119,10 @@ func (r *walletRepo) GetBalances(ctx context.Context, walletID string) ([]models
 	}, nil
 }
 
+func (r *walletRepo) UpsertNativeBalance(ctx context.Context, walletID string, balance string) error {
+	return nil
+}
+
 type postgresWalletRepo struct {
 	db *sql.DB
 }
@@ -217,4 +222,17 @@ func (r *postgresWalletRepo) GetBalances(ctx context.Context, walletID string) (
 		balances = append(balances, balance)
 	}
 	return balances, rows.Err()
+}
+
+func (r *postgresWalletRepo) UpsertNativeBalance(ctx context.Context, walletID string, balance string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO balances(wallet_id, asset_id, balance)
+		SELECT w.wallet_id, a.asset_id, $2::numeric
+		FROM wallets w
+		JOIN assets a ON a.chain_id = w.chain_id AND a.is_native = true
+		WHERE w.wallet_id = $1::bigint
+		ON CONFLICT (wallet_id, asset_id)
+		DO UPDATE SET balance = EXCLUDED.balance, updated_at = now()
+	`, walletID, balance)
+	return err
 }
