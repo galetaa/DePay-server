@@ -163,8 +163,65 @@ func (s *adminService) SubmitDemoPayment(ctx context.Context, req models.DemoPay
 		}
 	}
 	_, _ = s.db.ExecContext(ctx, `UPDATE payment_invoices SET status = 'paid', paid_at = now() WHERE invoice_id = $1`, req.InvoiceID)
+	_ = s.recordDemoWebhookDeliveries(ctx, transactionID)
 
 	return map[string]any{"transaction_id": transactionID, "status": "confirmed"}, nil
+}
+
+func (s *adminService) recordDemoWebhookDeliveries(ctx context.Context, transactionID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		WITH tx AS (
+			SELECT transaction_id, external_transaction_id, store_id, user_id, invoice_id, amount, amount_in_usdt, status
+			FROM payment_transactions
+			WHERE transaction_id = $1::bigint
+		),
+		inserted AS (
+			INSERT INTO merchant_webhook_deliveries(
+				webhook_id,
+				store_id,
+				transaction_id,
+				event_type,
+				payload,
+				status,
+				attempts,
+				response_status,
+				response_body,
+				delivered_at
+			)
+			SELECT
+				mw.webhook_id,
+				mw.store_id,
+				tx.transaction_id,
+				'transaction.confirmed',
+				jsonb_build_object(
+					'type', 'transaction.confirmed',
+					'payload', jsonb_build_object(
+						'transaction_id', COALESCE(tx.external_transaction_id, tx.transaction_id::text),
+						'store_id', tx.store_id::text,
+						'user_id', tx.user_id::text,
+						'invoice_id', COALESCE(tx.invoice_id::text, ''),
+						'amount', tx.amount::text,
+						'amount_usdt', tx.amount_in_usdt::text,
+						'status', tx.status::text
+					)
+				),
+				'delivered',
+				1,
+				204,
+				'admin demo webhook delivery log mode',
+				now()
+			FROM merchant_webhooks mw
+			JOIN tx ON tx.store_id = mw.store_id
+			WHERE mw.is_active = true
+			  AND mw.event_types @> ARRAY['transaction.confirmed']::text[]
+			RETURNING webhook_id
+		)
+		UPDATE merchant_webhooks
+		SET last_success_at = now(),
+		    updated_at = now()
+		WHERE webhook_id IN (SELECT webhook_id FROM inserted)
+	`, transactionID)
+	return err
 }
 
 func (s *adminService) queryRows(ctx context.Context, query string, args ...any) (models.TableRowsResponse, error) {
