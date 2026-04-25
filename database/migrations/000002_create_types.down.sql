@@ -1,0 +1,10 @@
+DROP TYPE IF EXISTS document_type_enum;
+DROP TYPE IF EXISTS risk_alert_status_enum;
+DROP TYPE IF EXISTS risk_level_enum;
+DROP TYPE IF EXISTS rpc_node_status_enum;
+DROP TYPE IF EXISTS terminal_status_enum;
+DROP TYPE IF EXISTS nfc_session_status_enum;
+DROP TYPE IF EXISTS invoice_status_enum;
+DROP TYPE IF EXISTS transaction_status_enum;
+DROP TYPE IF EXISTS verification_status_enum;
+DROP TYPE IF EXISTS kyc_status_enum;

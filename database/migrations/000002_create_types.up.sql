@@ -1,0 +1,10 @@
+CREATE TYPE kyc_status_enum AS ENUM ('not_submitted', 'pending', 'approved', 'rejected');
+CREATE TYPE verification_status_enum AS ENUM ('not_submitted', 'pending', 'approved', 'rejected');
+CREATE TYPE transaction_status_enum AS ENUM ('created', 'submitted', 'validated', 'broadcasted', 'confirmed', 'failed', 'cancelled');
+CREATE TYPE invoice_status_enum AS ENUM ('draft', 'issued', 'paid', 'expired', 'cancelled');
+CREATE TYPE nfc_session_status_enum AS ENUM ('created', 'active', 'completed', 'expired', 'cancelled');
+CREATE TYPE terminal_status_enum AS ENUM ('active', 'inactive', 'blocked');
+CREATE TYPE rpc_node_status_enum AS ENUM ('healthy', 'degraded', 'down');
+CREATE TYPE risk_level_enum AS ENUM ('low', 'medium', 'high', 'critical');
+CREATE TYPE risk_alert_status_enum AS ENUM ('open', 'in_review', 'resolved', 'dismissed');
+CREATE TYPE document_type_enum AS ENUM ('passport', 'id_card', 'driver_license', 'selfie', 'company_registration', 'tax_certificate');
