@@ -60,6 +60,9 @@ func (r *transactionRepo) UpdateStatus(transactionID string, status string, fail
 	if !exists {
 		return errors.New("transaction not found")
 	}
+	if !isValidStatusTransition(tx.Status, status) {
+		return invalidStatusTransitionError(tx.Status, status)
+	}
 	tx.Status = status
 	tx.FailureReason = failureReason
 	r.data[transactionID] = tx
@@ -74,10 +77,38 @@ func (r *transactionRepo) MarkBroadcasted(transactionID string, blockchainTxHash
 	if !exists {
 		return errors.New("transaction not found")
 	}
+	if !isValidStatusTransition(tx.Status, "broadcasted") {
+		return invalidStatusTransitionError(tx.Status, "broadcasted")
+	}
 	tx.Status = "broadcasted"
 	tx.BlockchainTxHash = blockchainTxHash
 	r.data[transactionID] = tx
 	return nil
+}
+
+func isValidStatusTransition(from string, to string) bool {
+	if from == to {
+		return true
+	}
+	switch from {
+	case "created":
+		return to == "submitted" || to == "cancelled" || to == "failed"
+	case "submitted":
+		return to == "validated" || to == "cancelled" || to == "failed"
+	case "validated":
+		return to == "broadcasted" || to == "failed"
+	case "broadcasted":
+		return to == "confirmed" || to == "failed"
+	default:
+		return false
+	}
+}
+
+func invalidStatusTransitionError(from string, to string) error {
+	if from == "confirmed" || from == "failed" || from == "cancelled" {
+		return errors.New("transaction status " + from + " is terminal")
+	}
+	return errors.New("invalid transaction status transition from " + from + " to " + to)
 }
 
 type postgresTransactionRepo struct {
