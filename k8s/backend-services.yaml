@@ -1,0 +1,463 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: depay-service-config
+data:
+  REDIS_ADDR: redis:6379
+  SKIP_RABBITMQ: "false"
+  WEBHOOK_DELIVERY_MODE: http
+  WEBHOOK_DELIVERY_TIMEOUT_MS: "5000"
+  BLOCKCHAIN_RPC_TIMEOUT_MS: "10000"
+  KYC_PROVIDER_TIMEOUT_MS: "5000"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: depay-app-secret
+type: Opaque
+stringData:
+  DATABASE_URL: postgres://myuser:mypassword@postgres:5432/mydatabase?sslmode=disable
+  JWT_SECRET: change-me-in-production
+  RABBITMQ_URL: amqp://myuser:mypassword@rabbitmq:5672/
+  BLOCKCHAIN_RPC_URL: ""
+  WALLET_BALANCE_RPC_URL: ""
+  KYC_PROVIDER_URL: ""
+  KYC_PROVIDER_API_KEY: ""
+  GRAFANA_ADMIN_PASSWORD: change-me-in-production
+  VAULT_DEV_ROOT_TOKEN_ID: change-me-in-production
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transaction-validation-service
+  labels:
+    app: transaction-validation-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: transaction-validation-service
+  template:
+    metadata:
+      labels:
+        app: transaction-validation-service
+    spec:
+      containers:
+        - name: transaction-validation-service
+          image: myregistry/transaction-validation-service:latest
+          ports:
+            - containerPort: 8081
+          env:
+            - name: PORT
+              value: "8081"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: JWT_SECRET
+          readinessProbe: &readiness8081
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe: &liveness8081
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-validation-service
+spec:
+  selector:
+    app: transaction-validation-service
+  ports:
+    - port: 80
+      targetPort: 8081
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gas-info-service
+  labels:
+    app: gas-info-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gas-info-service
+  template:
+    metadata:
+      labels:
+        app: gas-info-service
+    spec:
+      containers:
+        - name: gas-info-service
+          image: myregistry/gas-info-service:latest
+          ports:
+            - containerPort: 8082
+          env:
+            - name: PORT
+              value: "8082"
+            - name: REDIS_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: depay-service-config
+                  key: REDIS_ADDR
+            - name: WALLET_BALANCE_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: WALLET_BALANCE_RPC_URL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gas-info-service
+spec:
+  selector:
+    app: gas-info-service
+  ports:
+    - port: 80
+      targetPort: 8082
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merchant-service
+  labels:
+    app: merchant-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: merchant-service
+  template:
+    metadata:
+      labels:
+        app: merchant-service
+    spec:
+      containers:
+        - name: merchant-service
+          image: myregistry/merchant-service:latest
+          ports:
+            - containerPort: 8083
+          env:
+            - name: PORT
+              value: "8083"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: merchant-service
+spec:
+  selector:
+    app: merchant-service
+  ports:
+    - port: 80
+      targetPort: 8083
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wallet-service
+  labels:
+    app: wallet-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wallet-service
+  template:
+    metadata:
+      labels:
+        app: wallet-service
+    spec:
+      containers:
+        - name: wallet-service
+          image: myregistry/wallet-service:latest
+          ports:
+            - containerPort: 8084
+          env:
+            - name: PORT
+              value: "8084"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: JWT_SECRET
+            - name: REDIS_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: depay-service-config
+                  key: REDIS_ADDR
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wallet-service
+spec:
+  selector:
+    app: wallet-service
+  ports:
+    - port: 80
+      targetPort: 8084
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transaction-core-service
+  labels:
+    app: transaction-core-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: transaction-core-service
+  template:
+    metadata:
+      labels:
+        app: transaction-core-service
+    spec:
+      containers:
+        - name: transaction-core-service
+          image: myregistry/transaction-core-service:latest
+          ports:
+            - containerPort: 8085
+          env:
+            - name: PORT
+              value: "8085"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: JWT_SECRET
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: RABBITMQ_URL
+            - name: BLOCKCHAIN_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: BLOCKCHAIN_RPC_URL
+            - name: SKIP_RABBITMQ
+              valueFrom:
+                configMapKeyRef:
+                  name: depay-service-config
+                  key: SKIP_RABBITMQ
+            - name: WEBHOOK_DELIVERY_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: depay-service-config
+                  key: WEBHOOK_DELIVERY_MODE
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8085
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-core-service
+spec:
+  selector:
+    app: transaction-core-service
+  ports:
+    - port: 80
+      targetPort: 8085
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyc-service
+  labels:
+    app: kyc-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kyc-service
+  template:
+    metadata:
+      labels:
+        app: kyc-service
+    spec:
+      containers:
+        - name: kyc-service
+          image: myregistry/kyc-service:latest
+          ports:
+            - containerPort: 8086
+          env:
+            - name: PORT
+              value: "8086"
+            - name: KYC_PROVIDER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: KYC_PROVIDER_URL
+            - name: KYC_PROVIDER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: KYC_PROVIDER_API_KEY
+            - name: KYC_PROVIDER_TIMEOUT_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: depay-service-config
+                  key: KYC_PROVIDER_TIMEOUT_MS
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8086
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8086
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kyc-service
+spec:
+  selector:
+    app: kyc-service
+  ports:
+    - port: 80
+      targetPort: 8086
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-service
+  labels:
+    app: admin-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: admin-service
+  template:
+    metadata:
+      labels:
+        app: admin-service
+    spec:
+      containers:
+        - name: admin-service
+          image: myregistry/admin-service:latest
+          ports:
+            - containerPort: 8090
+          env:
+            - name: PORT
+              value: "8090"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: depay-app-secret
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8090
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-service
+spec:
+  selector:
+    app: admin-service
+  ports:
+    - port: 80
+      targetPort: 8090

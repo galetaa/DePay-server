@@ -4,17 +4,25 @@ set -euo pipefail
 # -----------------------------
 # Настройка переменных окружения
 # -----------------------------
-export VAULT_ADDR="http://vault.vault.svc.cluster.local:8200"
-export KONG_ADMIN_URL="http://kong-admin.kong.svc.cluster.local:8001"
+export VAULT_ADDR="${VAULT_ADDR:-http://vault.vault.svc.cluster.local:8200}"
+export KONG_ADMIN_URL="${KONG_ADMIN_URL:-http://kong-admin.kong.svc.cluster.local:8001}"
 
 # Имена компонентов
-CONSUMER_NAME="example-consumer"
-SERVICE_USER="user-service"
-SERVICE_TRANSACTION="transaction-service"
-SERVICE_WALLET="wallet-service"
+CONSUMER_NAME="${KONG_CONSUMER_NAME:-depay-platform}"
+KONG_SERVICES=(
+  "user-service:1000"
+  "merchant-service:1000"
+  "wallet-service:2000"
+  "transaction-core-service:5000"
+  "transaction-validation-service:5000"
+  "gas-info-service:2000"
+  "kyc-service:1000"
+  "admin-service:500"
+)
 
 # Путь в Vault для хранения JWT ключей
-JWT_SECRET_PATH="secret/jwt"
+JWT_SECRET_PATH="${JWT_SECRET_PATH:-secret/jwt}"
+APP_SECRET_PATH="${APP_SECRET_PATH:-secret/depay/app}"
 
 # Пути к файлам с ключами (убедитесь, что файлы находятся в той же директории, где запускается скрипт)
 JWT_PUBLIC_FILE="./jwt_public_key.pem"
@@ -30,6 +38,20 @@ if ! vault kv get -field=public_key "$JWT_SECRET_PATH" >/dev/null 2>&1; then
   echo "Ключи успешно загружены."
 else
   echo "JWT ключи уже присутствуют в Vault."
+fi
+
+echo "Проверка прикладных секретов DePay в Vault по пути: ${APP_SECRET_PATH}"
+if ! vault kv get "$APP_SECRET_PATH" >/dev/null 2>&1; then
+  vault kv put "$APP_SECRET_PATH" \
+    database_url="${DATABASE_URL:-}" \
+    jwt_secret="${JWT_SECRET:-}" \
+    rabbitmq_url="${RABBITMQ_URL:-}" \
+    blockchain_rpc_url="${BLOCKCHAIN_RPC_URL:-}" \
+    kyc_provider_url="${KYC_PROVIDER_URL:-}" \
+    kyc_provider_api_key="${KYC_PROVIDER_API_KEY:-}"
+  echo "Прикладные секреты загружены."
+else
+  echo "Прикладные секреты уже присутствуют."
 fi
 
 echo "Получение публичного ключа из Vault..."
@@ -67,29 +89,16 @@ if [[ "$HTTP_CODE" != "201" && "$HTTP_CODE" != "409" ]]; then
   exit 1
 fi
 
-# 2.3. Настройка Rate Limiting для user-service
-echo "Настраиваем плагин Rate Limiting для сервиса '$SERVICE_USER'..."
-HTTP_CODE=$(kong_post "$KONG_ADMIN_URL/services/$SERVICE_USER/plugins" "--data name=rate-limiting --data config.minute=1000")
-if [[ "$HTTP_CODE" != "201" ]]; then
-  echo "Ошибка при настройке Rate Limiting для $SERVICE_USER, HTTP-код: $HTTP_CODE"
-  exit 1
-fi
-
-# 2.4. Настройка Rate Limiting для transaction-service
-echo "Настраиваем плагин Rate Limiting для сервиса '$SERVICE_TRANSACTION'..."
-HTTP_CODE=$(kong_post "$KONG_ADMIN_URL/services/$SERVICE_TRANSACTION/plugins" "--data name=rate-limiting --data config.minute=5000")
-if [[ "$HTTP_CODE" != "201" ]]; then
-  echo "Ошибка при настройке Rate Limiting для $SERVICE_TRANSACTION, HTTP-код: $HTTP_CODE"
-  exit 1
-fi
-
-# 2.5. Настройка плагина кэширования для wallet-service
-# Примечание: здесь приведён пример использования плагина, который может обращаться к Redis.
-echo "Настраиваем плагин кэширования для сервиса '$SERVICE_WALLET'..."
-HTTP_CODE=$(kong_post "$KONG_ADMIN_URL/services/$SERVICE_WALLET/plugins" "--data name=response-caching --data config.redis_host=redis.database.svc.cluster.local --data config.redis_port=6379 --data config.ttl=300")
-if [[ "$HTTP_CODE" != "201" ]]; then
-  echo "Ошибка при настройке кэширования для $SERVICE_WALLET, HTTP-код: $HTTP_CODE"
-  exit 1
-fi
+# 2.3. Настройка Rate Limiting для всех backend-сервисов
+for service_spec in "${KONG_SERVICES[@]}"; do
+  service="${service_spec%%:*}"
+  limit="${service_spec##*:}"
+  echo "Настраиваем Rate Limiting для сервиса '$service'..."
+  HTTP_CODE=$(kong_post "$KONG_ADMIN_URL/services/$service/plugins" "--data name=rate-limiting --data config.minute=$limit --data config.policy=local")
+  if [[ "$HTTP_CODE" != "201" && "$HTTP_CODE" != "409" ]]; then
+    echo "Ошибка при настройке Rate Limiting для $service, HTTP-код: $HTTP_CODE"
+    exit 1
+  fi
+done
 
 echo "Автоматизация для Vault и конфигурации Kong завершена успешно."

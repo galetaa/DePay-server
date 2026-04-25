@@ -1,0 +1,82 @@
+_format_version: "1.1"
+_transform: true
+
+services:
+  - name: user-service
+    url: http://user-service:8080
+    routes:
+      - name: user-api
+        paths:
+          - /api/user
+        strip_path: false
+  - name: merchant-service
+    url: http://merchant-service:8083
+    routes:
+      - name: merchant-api
+        paths:
+          - /api/merchant
+        strip_path: false
+  - name: wallet-service
+    url: http://wallet-service:8084
+    routes:
+      - name: wallet-api
+        paths:
+          - /api/wallets
+        strip_path: false
+  - name: transaction-core-service
+    url: http://transaction-core-service:8085
+    routes:
+      - name: transaction-api
+        paths:
+          - /api/transaction
+        strip_path: false
+  - name: transaction-validation-service
+    url: http://transaction-validation-service:8081
+    routes:
+      - name: validation-api
+        paths:
+          - /api/transaction/validate
+        strip_path: false
+  - name: gas-info-service
+    url: http://gas-info-service:8082
+    routes:
+      - name: gas-api
+        paths:
+          - /api/transactions/gas-info
+          - /api/gas-info
+        strip_path: false
+  - name: kyc-service
+    url: http://kyc-service:8086
+    routes:
+      - name: kyc-api
+        paths:
+          - /api/kyc
+        strip_path: false
+  - name: admin-service
+    url: http://admin-service:8090
+    routes:
+      - name: admin-api
+        paths:
+          - /api/admin
+          - /api/analytics
+        strip_path: false
+
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      headers:
+        - Authorization
+        - Content-Type
+      max_age: 3600
+  - name: rate-limiting
+    config:
+      minute: 1200
+      policy: local

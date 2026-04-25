@@ -22,20 +22,18 @@ spec:
         env:
         - name: ENV
           value: production
-        - name: DB_HOST
-          value: postgres
-        - name: DB_USER
+        - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: POSTGRES_USER
-        - name: DB_PASSWORD
+              name: depay-app-secret
+              key: DATABASE_URL
+        - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: POSTGRES_PASSWORD
-        - name: DB_NAME
-          value: mydatabase
+              name: depay-app-secret
+              key: JWT_SECRET
+        - name: PORT
+          value: "8080"
         readinessProbe:
           httpGet:
             path: /health

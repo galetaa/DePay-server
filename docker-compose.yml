@@ -172,6 +172,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      WALLET_BALANCE_RPC_URL: ${WALLET_BALANCE_RPC_URL:-}
+      WALLET_BALANCE_RPC_TIMEOUT_MS: ${WALLET_BALANCE_RPC_TIMEOUT_MS:-10000}
       JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
       PORT: 8084
     volumes:
@@ -195,6 +197,10 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-myuser}:${RABBITMQ_DEFAULT_PASS:-mypassword}@rabbitmq:5672/
       SKIP_RABBITMQ: ${SKIP_RABBITMQ:-false}
+      BLOCKCHAIN_RPC_URL: ${BLOCKCHAIN_RPC_URL:-}
+      BLOCKCHAIN_RPC_TIMEOUT_MS: ${BLOCKCHAIN_RPC_TIMEOUT_MS:-10000}
+      WEBHOOK_DELIVERY_MODE: ${WEBHOOK_DELIVERY_MODE:-log}
+      WEBHOOK_DELIVERY_TIMEOUT_MS: ${WEBHOOK_DELIVERY_TIMEOUT_MS:-5000}
       JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
       PORT: 8085
     volumes:
@@ -241,8 +247,53 @@ services:
     depends_on:
       - admin-service
 
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  vault:
+    image: hashicorp/vault:1.17
+    profiles: ["secrets"]
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:-depay-root-token}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    volumes:
+      - vault-data:/vault/file
+
 volumes:
   pgdata:
   go-mod-cache:
   go-build-cache:
   web-node-modules:
+  prometheus-data:
+  grafana-data:
+  vault-data:
