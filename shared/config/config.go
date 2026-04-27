@@ -28,7 +28,6 @@ func InitConfig() error {
 	viper.AutomaticEnv()
 	viper.SetDefault("REDIS_ADDR", "redis:6379")
 	viper.SetDefault("RABBITMQ_URL", "amqp://myuser:mypassword@rabbitmq:5672/")
-	viper.SetDefault("JWT_SECRET", "dev_secret_change_me")
 
 	// Если конфигурационный файл не найден, используем только env-переменные
 	if err := viper.ReadInConfig(); err != nil {

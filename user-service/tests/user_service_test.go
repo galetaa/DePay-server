@@ -36,6 +36,7 @@ func setupRouter() *gin.Engine {
 
 // TestHealthEndpoint проверяет работу эндпоинта /health
 func TestHealthEndpoint(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
 	router := setupRouter()
 
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -52,6 +53,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 // TestRegisterEndpoint проверяет регистрацию нового пользователя
 func TestRegisterEndpoint(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
 	router := setupRouter()
 
 	reqBody := map[string]string{

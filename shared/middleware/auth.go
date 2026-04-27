@@ -24,6 +24,11 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
 			return
 		}
+		secret := utils.GetJWTSecret()
+		if secret == "" {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "JWT_SECRET is not configured"})
+			return
+		}
 		tokenString := parts[1]
 
 		// Здесь можно добавить проверку алгоритма, ключа и т.д.
@@ -31,7 +36,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
-			return []byte(utils.GetJWTSecret()), nil
+			return []byte(secret), nil
 		})
 
 		if err != nil || !token.Valid {
