@@ -242,12 +242,16 @@ paths:
   /api/wallets:
     post:
       tags: [Wallet]
+      security:
+        - bearerAuth: []
       summary: Create wallet
       responses:
         "201":
           description: Wallet created
     get:
       tags: [Wallet]
+      security:
+        - bearerAuth: []
       summary: List wallets
       responses:
         "200":
@@ -255,6 +259,8 @@ paths:
   /api/wallets/{wallet_id}:
     get:
       tags: [Wallet]
+      security:
+        - bearerAuth: []
       summary: Get wallet
       parameters:
         - $ref: "#/components/parameters/WalletID"
@@ -263,6 +269,8 @@ paths:
           description: Wallet
     delete:
       tags: [Wallet]
+      security:
+        - bearerAuth: []
       summary: Delete wallet
       parameters:
         - $ref: "#/components/parameters/WalletID"
@@ -272,6 +280,8 @@ paths:
   /api/wallets/{wallet_id}/balances:
     get:
       tags: [Wallet]
+      security:
+        - bearerAuth: []
       summary: Wallet balances
       parameters:
         - $ref: "#/components/parameters/WalletID"
@@ -281,6 +291,8 @@ paths:
   /api/wallets/{wallet_id}/sync:
     post:
       tags: [Wallet]
+      security:
+        - bearerAuth: []
       summary: Sync wallet balance from configured blockchain provider
       parameters:
         - $ref: "#/components/parameters/WalletID"
@@ -290,6 +302,8 @@ paths:
   /api/wallets/{address}/balance:
     get:
       tags: [Wallet]
+      security:
+        - bearerAuth: []
       summary: Balance by wallet address
       parameters:
         - name: address
@@ -304,6 +318,8 @@ paths:
   /api/transaction/initiate:
     post:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Initiate transaction
       responses:
         "200":
@@ -311,6 +327,8 @@ paths:
   /api/transaction/submit:
     post:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Submit transaction
       responses:
         "200":
@@ -318,6 +336,8 @@ paths:
   /api/transaction/validate:
     post:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Validate signed transaction
       responses:
         "200":
@@ -325,6 +345,8 @@ paths:
   /api/transaction/{transaction_id}:
     get:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Get transaction
       parameters:
         - $ref: "#/components/parameters/TransactionID"
@@ -334,6 +356,8 @@ paths:
   /api/transaction/{transaction_id}/status:
     get:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Get transaction status
       parameters:
         - $ref: "#/components/parameters/TransactionID"
@@ -343,6 +367,8 @@ paths:
   /api/transaction/{transaction_id}/cancel:
     post:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Cancel transaction
       parameters:
         - $ref: "#/components/parameters/TransactionID"
@@ -352,6 +378,8 @@ paths:
   /api/transaction/{transaction_id}/submit:
     post:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Move transaction to submitted
       parameters:
         - $ref: "#/components/parameters/TransactionID"
@@ -361,6 +389,8 @@ paths:
   /api/transaction/{transaction_id}/validate:
     post:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Move transaction to validated
       parameters:
         - $ref: "#/components/parameters/TransactionID"
@@ -370,6 +400,8 @@ paths:
   /api/transaction/{transaction_id}/broadcast:
     post:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Broadcast transaction using configured blockchain RPC provider
       parameters:
         - $ref: "#/components/parameters/TransactionID"
@@ -379,6 +411,8 @@ paths:
   /api/transaction/{transaction_id}/confirm:
     post:
       tags: [Transaction]
+      security:
+        - bearerAuth: []
       summary: Mark broadcasted transaction as confirmed
       parameters:
         - $ref: "#/components/parameters/TransactionID"
@@ -423,6 +457,8 @@ paths:
   /api/admin/tables:
     get:
       tags: [Admin]
+      security:
+        - bearerAuth: []
       summary: List allowed tables and views
       responses:
         "200":
@@ -430,6 +466,8 @@ paths:
   /api/admin/tables/{table_name}:
     get:
       tags: [Admin]
+      security:
+        - bearerAuth: []
       summary: Read rows from allowed table or view
       parameters:
         - name: table_name
@@ -448,6 +486,8 @@ paths:
   /api/admin/functions/{function_name}/execute:
     post:
       tags: [Admin]
+      security:
+        - bearerAuth: []
       summary: Execute allowed SQL function
       parameters:
         - name: function_name
@@ -472,6 +512,8 @@ paths:
   /api/admin/audit-logs:
     get:
       tags: [Admin]
+      security:
+        - bearerAuth: []
       summary: Audit logs
       responses:
         "200":
@@ -479,6 +521,8 @@ paths:
   /api/admin/risk-alerts:
     get:
       tags: [Admin]
+      security:
+        - bearerAuth: []
       summary: Risk alerts
       responses:
         "200":
@@ -486,6 +530,8 @@ paths:
   /api/admin/demo/invoices:
     post:
       tags: [Admin]
+      security:
+        - bearerAuth: []
       summary: Create demo invoice
       responses:
         "201":
@@ -493,6 +539,8 @@ paths:
   /api/admin/demo/payments:
     post:
       tags: [Admin]
+      security:
+        - bearerAuth: []
       summary: Submit demo payment
       responses:
         "200":
@@ -500,6 +548,8 @@ paths:
   /api/analytics/store-turnover:
     get:
       tags: [Analytics]
+      security:
+        - bearerAuth: []
       summary: Store turnover chart data
       responses:
         "200":
@@ -507,6 +557,8 @@ paths:
   /api/analytics/transaction-statuses:
     get:
       tags: [Analytics]
+      security:
+        - bearerAuth: []
       summary: Transaction status chart data
       responses:
         "200":
@@ -514,6 +566,8 @@ paths:
   /api/analytics/failed-transactions:
     get:
       tags: [Analytics]
+      security:
+        - bearerAuth: []
       summary: Failed transaction chart data
       responses:
         "200":
@@ -521,6 +575,8 @@ paths:
   /api/analytics/rpc-health:
     get:
       tags: [Analytics]
+      security:
+        - bearerAuth: []
       summary: RPC health chart data
       responses:
         "200":
