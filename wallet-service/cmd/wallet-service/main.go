@@ -64,8 +64,10 @@ func main() {
 	router.GET("/metrics", observability.Handler())
 
 	// Эндпоинты Wallet Service
-	router.GET("/wallet/export", walletCtrl.ExportWallets)
-	router.POST("/wallet/balance", walletCtrl.GetBalance)
+	legacyWallet := router.Group("/wallet")
+	legacyWallet.Use(middleware.JWTAuthMiddleware())
+	legacyWallet.GET("/export", walletCtrl.ExportWallets)
+	legacyWallet.POST("/balance", walletCtrl.GetBalance)
 
 	api := router.Group("/api")
 	wallets := api.Group("/wallets")
