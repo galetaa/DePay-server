@@ -81,7 +81,12 @@ func (s *adminService) GetTableRows(ctx context.Context, tableName string, limit
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	return s.queryRows(ctx, fmt.Sprintf("SELECT * FROM %s LIMIT %d", table, limit))
+	resp, err := s.queryRows(ctx, fmt.Sprintf("SELECT * FROM %s LIMIT %d", table, limit))
+	if err != nil {
+		return models.TableRowsResponse{}, err
+	}
+	resp.Limit = limit
+	return resp, nil
 }
 
 func (s *adminService) ExecuteFunction(ctx context.Context, functionName string, params []string) (models.TableRowsResponse, error) {
@@ -108,14 +113,24 @@ func (s *adminService) AuditLogs(ctx context.Context, limit int) (models.TableRo
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	return s.queryRows(ctx, fmt.Sprintf("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT %d", limit))
+	resp, err := s.queryRows(ctx, fmt.Sprintf("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT %d", limit))
+	if err != nil {
+		return models.TableRowsResponse{}, err
+	}
+	resp.Limit = limit
+	return resp, nil
 }
 
 func (s *adminService) RiskAlerts(ctx context.Context, limit int) (models.TableRowsResponse, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	return s.queryRows(ctx, fmt.Sprintf("SELECT * FROM risk_alerts ORDER BY created_at DESC LIMIT %d", limit))
+	resp, err := s.queryRows(ctx, fmt.Sprintf("SELECT * FROM risk_alerts ORDER BY created_at DESC LIMIT %d", limit))
+	if err != nil {
+		return models.TableRowsResponse{}, err
+	}
+	resp.Limit = limit
+	return resp, nil
 }
 
 func (s *adminService) CreateDemoInvoice(ctx context.Context) (map[string]any, error) {
