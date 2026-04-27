@@ -135,7 +135,7 @@ func TestTransactionLifecycleRejectsInvalidTransitions(t *testing.T) {
 	req, _ = http.NewRequest("POST", "/api/transaction/tx-invalid-flow/validate", nil)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusConflict, w.Code)
 
 	for _, path := range []string{
 		"/api/transaction/tx-invalid-flow/submit",
@@ -150,7 +150,7 @@ func TestTransactionLifecycleRejectsInvalidTransitions(t *testing.T) {
 	req, _ = http.NewRequest("POST", "/api/transaction/tx-invalid-flow/cancel", nil)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusConflict, w.Code)
 
 	for _, path := range []string{
 		"/api/transaction/tx-invalid-flow/broadcast",
@@ -165,5 +165,5 @@ func TestTransactionLifecycleRejectsInvalidTransitions(t *testing.T) {
 	req, _ = http.NewRequest("POST", "/api/transaction/tx-invalid-flow/submit", nil)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusConflict, w.Code)
 }

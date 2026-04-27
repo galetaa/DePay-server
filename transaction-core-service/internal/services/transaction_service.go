@@ -144,7 +144,7 @@ func (s *transactionService) UpdateStatus(transactionID string, status string, f
 	}
 	tx, err := s.repo.Get(transactionID)
 	if err != nil {
-		return nil
+		return err
 	}
 	s.dispatch(eventTypeForStatus(status), *tx)
 	return nil

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"transaction-core-service/internal/models"
@@ -38,7 +39,7 @@ func (tc *TransactionController) InitiateTransaction(c *gin.Context) {
 	}
 
 	if err := tc.service.Initiate(tx); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(statusCodeForTransactionError(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "transaction initiated"})
@@ -54,8 +55,12 @@ func (tc *TransactionController) SubmitTransaction(c *gin.Context) {
 		}
 		transactionID = tx.TransactionID
 	}
+	if transactionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "transaction_id is required"})
+		return
+	}
 	if err := tc.service.UpdateStatus(transactionID, "submitted", ""); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(statusCodeForTransactionError(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"transaction_id": transactionID, "status": "submitted"}})
@@ -64,7 +69,7 @@ func (tc *TransactionController) SubmitTransaction(c *gin.Context) {
 func (tc *TransactionController) ValidateTransaction(c *gin.Context) {
 	transactionID := c.Param("transaction_id")
 	if err := tc.service.UpdateStatus(transactionID, "validated", ""); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(statusCodeForTransactionError(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"transaction_id": transactionID, "status": "validated"}})
@@ -74,7 +79,11 @@ func (tc *TransactionController) BroadcastTransaction(c *gin.Context) {
 	transactionID := c.Param("transaction_id")
 	tx, err := tc.service.Broadcast(transactionID)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "data": tx})
+		status := statusCodeForTransactionError(err)
+		if status == http.StatusInternalServerError {
+			status = http.StatusBadGateway
+		}
+		c.JSON(status, gin.H{"error": err.Error(), "data": tx})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": tx})
@@ -83,7 +92,7 @@ func (tc *TransactionController) BroadcastTransaction(c *gin.Context) {
 func (tc *TransactionController) ConfirmTransaction(c *gin.Context) {
 	transactionID := c.Param("transaction_id")
 	if err := tc.service.UpdateStatus(transactionID, "confirmed", ""); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(statusCodeForTransactionError(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"transaction_id": transactionID, "status": "confirmed"}})
@@ -92,7 +101,7 @@ func (tc *TransactionController) ConfirmTransaction(c *gin.Context) {
 func (tc *TransactionController) GetTransaction(c *gin.Context) {
 	tx, err := tc.service.Get(c.Param("transaction_id"))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(statusCodeForTransactionError(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": tx})
@@ -101,7 +110,7 @@ func (tc *TransactionController) GetTransaction(c *gin.Context) {
 func (tc *TransactionController) GetStatus(c *gin.Context) {
 	tx, err := tc.service.Get(c.Param("transaction_id"))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(statusCodeForTransactionError(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": models.TransactionStatusResponse{
@@ -115,8 +124,26 @@ func (tc *TransactionController) GetStatus(c *gin.Context) {
 func (tc *TransactionController) CancelTransaction(c *gin.Context) {
 	transactionID := c.Param("transaction_id")
 	if err := tc.service.UpdateStatus(transactionID, "cancelled", "user cancelled"); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		c.JSON(statusCodeForTransactionError(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"transaction_id": transactionID, "status": "cancelled"}})
 }
+
+func statusCodeForTransactionError(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "not found") || strings.Contains(message, "no rows") {
+		return http.StatusNotFound
+	}
+	if strings.Contains(message, "invalid") || strings.Contains(message, "terminal") || strings.Contains(message, "must be validated") {
+		return http.StatusConflict
+	}
+	if strings.Contains(message, "required") {
+		return http.StatusBadRequest
+	}
+	return http.StatusInternalServerError
+}
+
