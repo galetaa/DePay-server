@@ -49,7 +49,9 @@ func main() {
 
 	// Эндпоинт для обработки KYC запросов
 	router.POST("/kyc", kycCtrl.ProcessKYC)
-	router.POST("/api/kyc", kycCtrl.ProcessKYC)
+	securedAPI := router.Group("/api")
+	securedAPI.Use(middleware.JWTAuthMiddleware(), middleware.RoleMiddleware("merchant", "admin"))
+	securedAPI.POST("/kyc", kycCtrl.ProcessKYC)
 
 	port := os.Getenv("PORT")
 	if port == "" {

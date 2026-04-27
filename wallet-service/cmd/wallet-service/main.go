@@ -69,6 +69,7 @@ func main() {
 
 	api := router.Group("/api")
 	wallets := api.Group("/wallets")
+	wallets.Use(middleware.JWTAuthMiddleware())
 	wallets.POST("", walletCtrl.CreateWallet)
 	wallets.GET("", walletCtrl.ExportWallets)
 	wallets.GET("/:wallet_id/balances", walletCtrl.GetWalletBalances)

@@ -54,7 +54,9 @@ func main() {
 	router.GET("/metrics", observability.Handler())
 	// Эндпоинт для проверки валидности транзакции
 	router.POST("/transaction/validate", validationCtrl.ValidateTransaction)
-	router.POST("/api/transaction/validate", validationCtrl.ValidateTransaction)
+	securedAPI := router.Group("/api/transaction")
+	securedAPI.Use(middleware.JWTAuthMiddleware(), middleware.RoleMiddleware("merchant", "admin"))
+	securedAPI.POST("/validate", validationCtrl.ValidateTransaction)
 
 	port := os.Getenv("PORT")
 	if port == "" {
