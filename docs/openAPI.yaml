@@ -443,6 +443,8 @@ paths:
   /api/kyc:
     post:
       tags: [KYC]
+      security:
+        - bearerAuth: []
       summary: Process KYC request with configured mock or HTTP provider
       requestBody:
         required: true
