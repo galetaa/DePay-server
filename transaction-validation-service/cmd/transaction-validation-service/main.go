@@ -53,7 +53,9 @@ func main() {
 	})
 	router.GET("/metrics", observability.Handler())
 	// Эндпоинт для проверки валидности транзакции
-	router.POST("/transaction/validate", validationCtrl.ValidateTransaction)
+	legacy := router.Group("/transaction")
+	legacy.Use(middleware.JWTAuthMiddleware(), middleware.RoleMiddleware("merchant", "admin"))
+	legacy.POST("/validate", validationCtrl.ValidateTransaction)
 	securedAPI := router.Group("/api/transaction")
 	securedAPI.Use(middleware.JWTAuthMiddleware(), middleware.RoleMiddleware("merchant", "admin"))
 	securedAPI.POST("/validate", validationCtrl.ValidateTransaction)

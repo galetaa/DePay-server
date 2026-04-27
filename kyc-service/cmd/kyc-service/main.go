@@ -48,7 +48,9 @@ func main() {
 	router.GET("/metrics", observability.Handler())
 
 	// Эндпоинт для обработки KYC запросов
-	router.POST("/kyc", kycCtrl.ProcessKYC)
+	legacyAPI := router.Group("")
+	legacyAPI.Use(middleware.JWTAuthMiddleware(), middleware.RoleMiddleware("merchant", "admin"))
+	legacyAPI.POST("/kyc", kycCtrl.ProcessKYC)
 	securedAPI := router.Group("/api")
 	securedAPI.Use(middleware.JWTAuthMiddleware(), middleware.RoleMiddleware("merchant", "admin"))
 	securedAPI.POST("/kyc", kycCtrl.ProcessKYC)
