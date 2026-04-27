@@ -8,9 +8,13 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"shared/events"
@@ -118,6 +122,10 @@ func (d *PostgresWebhookDispatcher) deliver(ctx context.Context, target webhookT
 	if d.mode != "http" {
 		return d.markDelivered(ctx, target, deliveryID, 204, "webhook delivery log mode")
 	}
+	if err := validateWebhookTarget(ctx, target.URL); err != nil {
+		_ = d.markFailed(ctx, target, deliveryID, 0, "", err.Error())
+		return err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.URL, bytes.NewReader(body))
 	if err != nil {
@@ -215,3 +223,47 @@ type webhookTarget struct {
 	URL        string
 	SecretHash string
 }
+
+func validateWebhookTarget(ctx context.Context, rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid webhook url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("webhook url scheme must be http or https")
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return errors.New("webhook url host is required")
+	}
+	lowerHost := strings.ToLower(host)
+	if lowerHost == "localhost" || strings.HasSuffix(lowerHost, ".localhost") {
+		return errors.New("webhook url host is not allowed")
+	}
+
+	resolver := net.DefaultResolver
+	ips, err := resolver.LookupIP(ctx, "ip", host)
+	if err != nil {
+		return fmt.Errorf("unable to resolve webhook host: %w", err)
+	}
+	for _, ip := range ips {
+		if isRestrictedIP(ip) {
+			return fmt.Errorf("webhook target resolves to restricted address %s", ip.String())
+		}
+	}
+	return nil
+}
+
+func isRestrictedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return true
+	}
+	if ipv4 := ip.To4(); ipv4 != nil && ipv4[0] == 169 && ipv4[1] == 254 {
+		return true
+	}
+	return false
+}
+

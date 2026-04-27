@@ -450,7 +450,7 @@ func (r *postgresMerchantRepo) CreateWebhook(merchantID string, req models.Creat
 		return models.Webhook{}, err
 	}
 
-	secretHash := auth.HashToken(req.Secret)
+	secretHash := req.Secret
 	events := defaultWebhookEvents(req.EventTypes)
 	var webhook models.Webhook
 	var lastSuccessAt sql.NullTime
