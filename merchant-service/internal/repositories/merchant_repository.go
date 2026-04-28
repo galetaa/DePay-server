@@ -25,29 +25,42 @@ type MerchantRepository interface {
 	ListTerminals(merchantID string) ([]models.Terminal, error)
 	CreateWebhook(merchantID string, req models.CreateWebhookRequest) (models.Webhook, error)
 	ListWebhooks(merchantID string) ([]models.Webhook, error)
+	GetWebhook(merchantID string, webhookID string) (models.Webhook, error)
 	DeleteWebhook(merchantID string, webhookID string) error
+	TestWebhook(merchantID string, webhookID string) (models.WebhookDelivery, error)
+	CreateAPIKey(merchantID string, req models.CreateAPIKeyRequest) (models.APIKey, error)
+	ListAPIKeys(merchantID string) ([]models.APIKey, error)
+	RevokeAPIKey(merchantID string, keyID string) error
 }
 
 type memoryMerchantRepo struct {
-	mu            sync.RWMutex
-	merchants     map[string]models.Merchant
-	byEmail       map[string]string
-	invoices      map[string][]models.Invoice
-	terminals     map[string][]models.Terminal
-	webhooks      map[string][]models.Webhook
-	nextID        int64
-	nextWebhookID int64
+	mu             sync.RWMutex
+	merchants      map[string]models.Merchant
+	byEmail        map[string]string
+	invoices       map[string][]models.Invoice
+	terminals      map[string][]models.Terminal
+	webhooks       map[string][]models.Webhook
+	deliveries     map[string][]models.WebhookDelivery
+	apiKeys        map[string][]models.APIKey
+	nextID         int64
+	nextWebhookID  int64
+	nextDeliveryID int64
+	nextAPIKeyID   int64
 }
 
 func NewMerchantRepository() MerchantRepository {
 	return &memoryMerchantRepo{
-		merchants:     make(map[string]models.Merchant),
-		byEmail:       make(map[string]string),
-		invoices:      make(map[string][]models.Invoice),
-		terminals:     make(map[string][]models.Terminal),
-		webhooks:      make(map[string][]models.Webhook),
-		nextID:        1,
-		nextWebhookID: 1,
+		merchants:      make(map[string]models.Merchant),
+		byEmail:        make(map[string]string),
+		invoices:       make(map[string][]models.Invoice),
+		terminals:      make(map[string][]models.Terminal),
+		webhooks:       make(map[string][]models.Webhook),
+		deliveries:     make(map[string][]models.WebhookDelivery),
+		apiKeys:        make(map[string][]models.APIKey),
+		nextID:         1,
+		nextWebhookID:  1,
+		nextDeliveryID: 1,
+		nextAPIKeyID:   1,
 	}
 }
 
@@ -171,6 +184,11 @@ func (r *memoryMerchantRepo) CreateWebhook(merchantID string, req models.CreateW
 	if merchant.VerificationStatus != "approved" {
 		return models.Webhook{}, errors.New("merchant verification is required")
 	}
+	for _, webhook := range r.webhooks[merchantID] {
+		if webhook.URL == req.URL {
+			return models.Webhook{}, errors.New("webhook URL already exists")
+		}
+	}
 	webhook := models.Webhook{
 		ID:           strconv.FormatInt(r.nextWebhookID, 10),
 		MerchantID:   merchantID,
@@ -191,6 +209,18 @@ func (r *memoryMerchantRepo) ListWebhooks(merchantID string) ([]models.Webhook, 
 	return r.webhooks[merchantID], nil
 }
 
+func (r *memoryMerchantRepo) GetWebhook(merchantID string, webhookID string) (models.Webhook, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, webhook := range r.webhooks[merchantID] {
+		if webhook.ID == webhookID {
+			return webhook, nil
+		}
+	}
+	return models.Webhook{}, errors.New("webhook not found")
+}
+
 func (r *memoryMerchantRepo) DeleteWebhook(merchantID string, webhookID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -203,6 +233,101 @@ func (r *memoryMerchantRepo) DeleteWebhook(merchantID string, webhookID string) 
 		}
 	}
 	return errors.New("webhook not found")
+}
+
+func (r *memoryMerchantRepo) TestWebhook(merchantID string, webhookID string) (models.WebhookDelivery, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var exists bool
+	for _, webhook := range r.webhooks[merchantID] {
+		if webhook.ID == webhookID {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		return models.WebhookDelivery{}, errors.New("webhook not found")
+	}
+
+	now := time.Now().UTC()
+	delivery := models.WebhookDelivery{
+		ID:             strconv.FormatInt(r.nextDeliveryID, 10),
+		WebhookID:      webhookID,
+		MerchantID:     merchantID,
+		EventType:      "webhook.test",
+		Status:         "delivered",
+		Attempts:       1,
+		ResponseStatus: 204,
+		ResponseBody:   "webhook test log mode",
+		CreatedAt:      now,
+		DeliveredAt:    &now,
+	}
+	r.nextDeliveryID++
+	r.deliveries[merchantID] = append(r.deliveries[merchantID], delivery)
+	return delivery, nil
+}
+
+func (r *memoryMerchantRepo) CreateAPIKey(merchantID string, req models.CreateAPIKeyRequest) (models.APIKey, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	merchant, exists := r.merchants[merchantID]
+	if !exists {
+		return models.APIKey{}, errors.New("merchant not found")
+	}
+	if merchant.VerificationStatus != "approved" {
+		return models.APIKey{}, errors.New("merchant verification is required")
+	}
+	for _, key := range r.apiKeys[merchantID] {
+		if key.Name == req.Name && key.RevokedAt == nil {
+			return models.APIKey{}, errors.New("api key name already exists")
+		}
+	}
+	secret, err := auth.NewOpaqueToken(32)
+	if err != nil {
+		return models.APIKey{}, err
+	}
+	rawSecret := "depay_" + secret
+	key := models.APIKey{
+		ID:         strconv.FormatInt(r.nextAPIKeyID, 10),
+		MerchantID: merchantID,
+		Name:       req.Name,
+		KeyPrefix:  apiKeyPrefix(rawSecret),
+		Secret:     rawSecret,
+		Scopes:     req.Scopes,
+		CreatedAt:  time.Now().UTC(),
+	}
+	r.nextAPIKeyID++
+	r.apiKeys[merchantID] = append(r.apiKeys[merchantID], key)
+	return key, nil
+}
+
+func (r *memoryMerchantRepo) ListAPIKeys(merchantID string) ([]models.APIKey, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	keys := append([]models.APIKey(nil), r.apiKeys[merchantID]...)
+	for i := range keys {
+		keys[i].Secret = ""
+	}
+	return keys, nil
+}
+
+func (r *memoryMerchantRepo) RevokeAPIKey(merchantID string, keyID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	keys := r.apiKeys[merchantID]
+	for i := range keys {
+		if keys[i].ID == keyID && keys[i].RevokedAt == nil {
+			now := time.Now().UTC()
+			keys[i].RevokedAt = &now
+			r.apiKeys[merchantID] = keys
+			return nil
+		}
+	}
+	return errors.New("api key not found")
 }
 
 type postgresMerchantRepo struct {
@@ -450,7 +575,7 @@ func (r *postgresMerchantRepo) CreateWebhook(merchantID string, req models.Creat
 		return models.Webhook{}, err
 	}
 
-	secretHash := req.Secret
+	secretHash := auth.HashToken(req.Secret)
 	events := defaultWebhookEvents(req.EventTypes)
 	var webhook models.Webhook
 	var lastSuccessAt sql.NullTime
@@ -471,6 +596,9 @@ func (r *postgresMerchantRepo) CreateWebhook(merchantID string, req models.Creat
 		&webhook.CreatedAt,
 	)
 	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+			return models.Webhook{}, errors.New("webhook URL already exists")
+		}
 		return models.Webhook{}, err
 	}
 	if lastSuccessAt.Valid {
@@ -523,6 +651,41 @@ func (r *postgresMerchantRepo) ListWebhooks(merchantID string) ([]models.Webhook
 	return webhooks, rows.Err()
 }
 
+func (r *postgresMerchantRepo) GetWebhook(merchantID string, webhookID string) (models.Webhook, error) {
+	var webhook models.Webhook
+	var lastSuccessAt sql.NullTime
+	var lastFailureAt sql.NullTime
+	err := r.db.QueryRowContext(context.Background(), `
+		SELECT webhook_id::text, store_id::text, url, event_types, is_active, failure_count, last_success_at, last_failure_at, created_at
+		FROM merchant_webhooks
+		WHERE store_id = $1
+		  AND webhook_id = $2
+	`, merchantID, webhookID).Scan(
+		&webhook.ID,
+		&webhook.MerchantID,
+		&webhook.URL,
+		(*pq.StringArray)(&webhook.EventTypes),
+		&webhook.IsActive,
+		&webhook.FailureCount,
+		&lastSuccessAt,
+		&lastFailureAt,
+		&webhook.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.Webhook{}, errors.New("webhook not found")
+		}
+		return models.Webhook{}, err
+	}
+	if lastSuccessAt.Valid {
+		webhook.LastSuccessAt = &lastSuccessAt.Time
+	}
+	if lastFailureAt.Valid {
+		webhook.LastFailureAt = &lastFailureAt.Time
+	}
+	return webhook, nil
+}
+
 func (r *postgresMerchantRepo) DeleteWebhook(merchantID string, webhookID string) error {
 	result, err := r.db.ExecContext(context.Background(), `
 		DELETE FROM merchant_webhooks
@@ -540,6 +703,154 @@ func (r *postgresMerchantRepo) DeleteWebhook(merchantID string, webhookID string
 		return errors.New("webhook not found")
 	}
 	return nil
+}
+
+func (r *postgresMerchantRepo) TestWebhook(merchantID string, webhookID string) (models.WebhookDelivery, error) {
+	webhook, err := r.GetWebhook(merchantID, webhookID)
+	if err != nil {
+		return models.WebhookDelivery{}, err
+	}
+
+	var delivery models.WebhookDelivery
+	var deliveredAt time.Time
+	delivery.WebhookID = webhook.ID
+	delivery.MerchantID = merchantID
+	err = r.db.QueryRowContext(context.Background(), `
+		INSERT INTO merchant_webhook_deliveries(
+			webhook_id,
+			store_id,
+			event_type,
+			payload,
+			status,
+			attempts,
+			response_status,
+			response_body,
+			last_attempt_at,
+			delivered_at
+		)
+		VALUES (
+			$1::bigint,
+			$2::bigint,
+			'webhook.test',
+			jsonb_build_object(
+				'type', 'webhook.test',
+				'payload', jsonb_build_object('webhook_id', $1::bigint, 'store_id', $2::bigint)
+			),
+			'delivered',
+			1,
+			204,
+			'webhook test log mode',
+			now(),
+			now()
+		)
+		RETURNING webhook_delivery_id::text, event_type, status, attempts, response_status, response_body, created_at, delivered_at
+	`, webhook.ID, merchantID).Scan(
+		&delivery.ID,
+		&delivery.EventType,
+		&delivery.Status,
+		&delivery.Attempts,
+		&delivery.ResponseStatus,
+		&delivery.ResponseBody,
+		&delivery.CreatedAt,
+		&deliveredAt,
+	)
+	if err != nil {
+		return models.WebhookDelivery{}, err
+	}
+	delivery.DeliveredAt = &deliveredAt
+	return delivery, nil
+}
+
+func (r *postgresMerchantRepo) CreateAPIKey(merchantID string, req models.CreateAPIKeyRequest) (models.APIKey, error) {
+	if err := r.ensureApprovedMerchant(context.Background(), merchantID); err != nil {
+		return models.APIKey{}, err
+	}
+	secret, err := auth.NewOpaqueToken(32)
+	if err != nil {
+		return models.APIKey{}, err
+	}
+	rawSecret := "depay_" + secret
+	key := models.APIKey{MerchantID: merchantID, Name: req.Name, KeyPrefix: apiKeyPrefix(rawSecret), Secret: rawSecret, Scopes: req.Scopes}
+	err = r.db.QueryRowContext(context.Background(), `
+		INSERT INTO merchant_api_keys(store_id, key_name, key_prefix, secret_hash, scopes)
+		VALUES ($1::bigint, $2, $3, $4, $5)
+		RETURNING api_key_id::text, created_at
+	`, merchantID, req.Name, key.KeyPrefix, auth.HashToken(rawSecret), pq.Array(req.Scopes)).Scan(&key.ID, &key.CreatedAt)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+			return models.APIKey{}, errors.New("api key name already exists")
+		}
+		return models.APIKey{}, err
+	}
+	return key, nil
+}
+
+func (r *postgresMerchantRepo) ListAPIKeys(merchantID string) ([]models.APIKey, error) {
+	rows, err := r.db.QueryContext(context.Background(), `
+		SELECT api_key_id::text, store_id::text, key_name, key_prefix, scopes, last_used_at, revoked_at, created_at
+		FROM merchant_api_keys
+		WHERE store_id = $1::bigint
+		ORDER BY created_at DESC, api_key_id DESC
+	`, merchantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	keys := make([]models.APIKey, 0)
+	for rows.Next() {
+		var key models.APIKey
+		var lastUsedAt sql.NullTime
+		var revokedAt sql.NullTime
+		if err := rows.Scan(
+			&key.ID,
+			&key.MerchantID,
+			&key.Name,
+			&key.KeyPrefix,
+			(*pq.StringArray)(&key.Scopes),
+			&lastUsedAt,
+			&revokedAt,
+			&key.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if lastUsedAt.Valid {
+			key.LastUsedAt = &lastUsedAt.Time
+		}
+		if revokedAt.Valid {
+			key.RevokedAt = &revokedAt.Time
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
+func (r *postgresMerchantRepo) RevokeAPIKey(merchantID string, keyID string) error {
+	result, err := r.db.ExecContext(context.Background(), `
+		UPDATE merchant_api_keys
+		SET revoked_at = now()
+		WHERE store_id = $1::bigint
+		  AND api_key_id = $2::bigint
+		  AND revoked_at IS NULL
+	`, merchantID, keyID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return errors.New("api key not found")
+	}
+	return nil
+}
+
+func apiKeyPrefix(secret string) string {
+	if len(secret) <= 16 {
+		return secret
+	}
+	return secret[:16]
 }
 
 func (r *postgresMerchantRepo) ensureApprovedMerchant(ctx context.Context, merchantID string) error {
@@ -566,11 +877,15 @@ func defaultWebhookEvents(events []string) []string {
 		return events
 	}
 	return []string{
+		"invoice.created",
+		"invoice.paid",
+		"invoice.expired",
 		"transaction.created",
 		"transaction.submitted",
 		"transaction.validated",
 		"transaction.broadcasted",
 		"transaction.confirmed",
 		"transaction.failed",
+		"transaction.cancelled",
 	}
 }

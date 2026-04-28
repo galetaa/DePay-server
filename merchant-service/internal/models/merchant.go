@@ -69,6 +69,37 @@ type Webhook struct {
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
+type WebhookDelivery struct {
+	ID             string     `json:"id"`
+	WebhookID      string     `json:"webhook_id"`
+	MerchantID     string     `json:"merchant_id"`
+	EventType      string     `json:"event_type"`
+	Status         string     `json:"status"`
+	Attempts       int        `json:"attempts"`
+	ResponseStatus int        `json:"response_status,omitempty"`
+	ResponseBody   string     `json:"response_body,omitempty"`
+	ErrorMessage   string     `json:"error_message,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	DeliveredAt    *time.Time `json:"delivered_at,omitempty"`
+}
+
+type APIKey struct {
+	ID         string     `json:"id"`
+	MerchantID string     `json:"merchant_id"`
+	Name       string     `json:"name"`
+	KeyPrefix  string     `json:"key_prefix"`
+	Secret     string     `json:"secret,omitempty"`
+	Scopes     []string   `json:"scopes"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+type CreateAPIKeyRequest struct {
+	Name   string   `json:"name" binding:"required"`
+	Scopes []string `json:"scopes" binding:"required"`
+}
+
 type CreateWebhookRequest struct {
 	URL        string   `json:"url" binding:"required,url"`
 	EventTypes []string `json:"event_types"`

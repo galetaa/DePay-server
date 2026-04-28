@@ -147,8 +147,57 @@ func (mc *MerchantController) ListWebhooks(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": webhooks})
 }
 
+func (mc *MerchantController) GetWebhook(c *gin.Context) {
+	webhook, err := mc.service.GetWebhook(merchantID(c), c.Param("webhook_id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": webhook})
+}
+
 func (mc *MerchantController) DeleteWebhook(c *gin.Context) {
 	if err := mc.service.DeleteWebhook(merchantID(c), c.Param("webhook_id")); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (mc *MerchantController) TestWebhook(c *gin.Context) {
+	delivery, err := mc.service.TestWebhook(merchantID(c), c.Param("webhook_id"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"data": delivery})
+}
+
+func (mc *MerchantController) CreateAPIKey(c *gin.Context) {
+	var req models.CreateAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	key, err := mc.service.CreateAPIKey(merchantID(c), req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": key})
+}
+
+func (mc *MerchantController) ListAPIKeys(c *gin.Context) {
+	keys, err := mc.service.ListAPIKeys(merchantID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": keys})
+}
+
+func (mc *MerchantController) RevokeAPIKey(c *gin.Context) {
+	if err := mc.service.RevokeAPIKey(merchantID(c), c.Param("key_id")); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}

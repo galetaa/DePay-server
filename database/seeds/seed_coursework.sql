@@ -1,6 +1,7 @@
 BEGIN;
 
 TRUNCATE TABLE
+    merchant_api_keys,
     merchant_webhook_deliveries,
     merchant_webhooks,
     audit_logs,
@@ -32,8 +33,10 @@ RESTART IDENTITY CASCADE;
 INSERT INTO roles(role_name) VALUES
     ('user'),
     ('merchant'),
+    ('compliance'),
     ('compliance_operator'),
     ('admin'),
+    ('service'),
     ('terminal');
 
 INSERT INTO users(username, email, phone_number, password_hash, last_name, first_name, birth_date, address, kyc_status, created_at) VALUES

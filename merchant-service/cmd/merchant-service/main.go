@@ -47,6 +47,7 @@ func main() {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(middleware.RequestIDMiddleware())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
 	router.Use(observability.Middleware("merchant-service"))
@@ -69,7 +70,12 @@ func main() {
 	protected.GET("/terminals", ctrl.ListTerminals)
 	protected.POST("/webhooks", ctrl.CreateWebhook)
 	protected.GET("/webhooks", ctrl.ListWebhooks)
+	protected.GET("/webhooks/:webhook_id", ctrl.GetWebhook)
+	protected.POST("/webhooks/:webhook_id/test", ctrl.TestWebhook)
 	protected.DELETE("/webhooks/:webhook_id", ctrl.DeleteWebhook)
+	protected.POST("/api-keys", ctrl.CreateAPIKey)
+	protected.GET("/api-keys", ctrl.ListAPIKeys)
+	protected.DELETE("/api-keys/:key_id", ctrl.RevokeAPIKey)
 
 	port := os.Getenv("PORT")
 	if port == "" {
