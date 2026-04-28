@@ -53,6 +53,7 @@ func main() {
 	// Настройка маршрутов
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(middleware.RequestIDMiddleware())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
 	router.Use(observability.Middleware("wallet-service"))
@@ -64,14 +65,11 @@ func main() {
 	router.GET("/metrics", observability.Handler())
 
 	// Эндпоинты Wallet Service
-	legacyWallet := router.Group("/wallet")
-	legacyWallet.Use(middleware.JWTAuthMiddleware())
-	legacyWallet.GET("/export", walletCtrl.ExportWallets)
-	legacyWallet.POST("/balance", walletCtrl.GetBalance)
+	router.GET("/wallet/export", walletCtrl.ExportWallets)
+	router.POST("/wallet/balance", walletCtrl.GetBalance)
 
 	api := router.Group("/api")
 	wallets := api.Group("/wallets")
-	wallets.Use(middleware.JWTAuthMiddleware())
 	wallets.POST("", walletCtrl.CreateWallet)
 	wallets.GET("", walletCtrl.ExportWallets)
 	wallets.GET("/:wallet_id/balances", walletCtrl.GetWalletBalances)

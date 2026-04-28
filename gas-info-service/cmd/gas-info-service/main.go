@@ -31,6 +31,7 @@ func main() {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(middleware.RequestIDMiddleware())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
 	router.Use(observability.Middleware("gas-info-service"))

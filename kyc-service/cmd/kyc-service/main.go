@@ -37,6 +37,7 @@ func main() {
 	// Инициализируем маршрутизатор
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(middleware.RequestIDMiddleware())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
 	router.Use(observability.Middleware("kyc-service"))
@@ -48,12 +49,8 @@ func main() {
 	router.GET("/metrics", observability.Handler())
 
 	// Эндпоинт для обработки KYC запросов
-	legacyAPI := router.Group("")
-	legacyAPI.Use(middleware.JWTAuthMiddleware(), middleware.RoleMiddleware("merchant", "admin"))
-	legacyAPI.POST("/kyc", kycCtrl.ProcessKYC)
-	securedAPI := router.Group("/api")
-	securedAPI.Use(middleware.JWTAuthMiddleware(), middleware.RoleMiddleware("merchant", "admin"))
-	securedAPI.POST("/kyc", kycCtrl.ProcessKYC)
+	router.POST("/kyc", kycCtrl.ProcessKYC)
+	router.POST("/api/kyc", kycCtrl.ProcessKYC)
 
 	port := os.Getenv("PORT")
 	if port == "" {
