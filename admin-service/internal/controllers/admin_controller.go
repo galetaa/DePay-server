@@ -67,6 +67,15 @@ func (ac *AdminController) RiskAlerts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": rows})
 }
 
+func (ac *AdminController) SystemHealth(c *gin.Context) {
+	health, err := ac.service.SystemHealth(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "SYSTEM_HEALTH_DEGRADED", "message": err.Error(), "details": gin.H{}}, "data": health})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": health})
+}
+
 func (ac *AdminController) StoreTurnover(c *gin.Context) {
 	rows, err := ac.service.ExecuteFunction(c.Request.Context(), "get_store_turnover", []string{
 		c.DefaultQuery("store_id", "1"),

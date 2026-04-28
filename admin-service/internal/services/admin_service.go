@@ -5,31 +5,37 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"admin-service/internal/models"
 )
 
 var allowedTables = map[string]string{
-	"users":                       "users",
-	"stores":                      "stores",
-	"wallets":                     "wallets",
-	"balances":                    "balances",
-	"payment_invoices":            "payment_invoices",
-	"payment_transactions":        "payment_transactions",
-	"rpc_nodes":                   "rpc_nodes",
-	"rpc_node_checks":             "rpc_node_checks",
-	"risk_alerts":                 "risk_alerts",
-	"audit_logs":                  "audit_logs",
-	"merchant_webhooks":           "merchant_webhooks",
-	"merchant_webhook_deliveries": "merchant_webhook_deliveries",
-	"vw_user_wallet_balances":     "vw_user_wallet_balances",
-	"vw_store_transactions":       "vw_store_transactions",
-	"vw_failed_transactions":      "vw_failed_transactions",
-	"vw_rpc_node_status":          "vw_rpc_node_status",
-	"vw_compliance_kyc_queue":     "vw_compliance_kyc_queue",
-	"vw_webhook_delivery_status":  "vw_webhook_delivery_status",
+	"users":                              "users",
+	"stores":                             "stores",
+	"kyc_applications":                   "kyc_applications",
+	"merchant_verification_applications": "merchant_verification_applications",
+	"blacklisted_wallets":                "blacklisted_wallets",
+	"wallets":                            "wallets",
+	"balances":                           "balances",
+	"payment_invoices":                   "payment_invoices",
+	"terminals":                          "terminals",
+	"payment_transactions":               "payment_transactions",
+	"rpc_nodes":                          "rpc_nodes",
+	"rpc_node_checks":                    "rpc_node_checks",
+	"risk_alerts":                        "risk_alerts",
+	"audit_logs":                         "audit_logs",
+	"merchant_webhooks":                  "merchant_webhooks",
+	"merchant_webhook_deliveries":        "merchant_webhook_deliveries",
+	"vw_user_wallet_balances":            "vw_user_wallet_balances",
+	"vw_store_transactions":              "vw_store_transactions",
+	"vw_failed_transactions":             "vw_failed_transactions",
+	"vw_rpc_node_status":                 "vw_rpc_node_status",
+	"vw_compliance_kyc_queue":            "vw_compliance_kyc_queue",
+	"vw_webhook_delivery_status":         "vw_webhook_delivery_status",
 }
 
 var allowedFunctions = map[string]int{
@@ -53,6 +59,7 @@ type AdminService interface {
 	ExecuteFunction(ctx context.Context, functionName string, params []string) (models.TableRowsResponse, error)
 	AuditLogs(ctx context.Context, limit int) (models.TableRowsResponse, error)
 	RiskAlerts(ctx context.Context, limit int) (models.TableRowsResponse, error)
+	SystemHealth(ctx context.Context) (models.SystemHealthResponse, error)
 	CreateDemoInvoice(ctx context.Context) (map[string]any, error)
 	SubmitDemoPayment(ctx context.Context, req models.DemoPaymentRequest) (map[string]any, error)
 }
@@ -81,12 +88,7 @@ func (s *adminService) GetTableRows(ctx context.Context, tableName string, limit
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	resp, err := s.queryRows(ctx, fmt.Sprintf("SELECT * FROM %s LIMIT %d", table, limit))
-	if err != nil {
-		return models.TableRowsResponse{}, err
-	}
-	resp.Limit = limit
-	return resp, nil
+	return s.queryRows(ctx, fmt.Sprintf("SELECT * FROM %s LIMIT %d", table, limit))
 }
 
 func (s *adminService) ExecuteFunction(ctx context.Context, functionName string, params []string) (models.TableRowsResponse, error) {
@@ -113,24 +115,62 @@ func (s *adminService) AuditLogs(ctx context.Context, limit int) (models.TableRo
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	resp, err := s.queryRows(ctx, fmt.Sprintf("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT %d", limit))
-	if err != nil {
-		return models.TableRowsResponse{}, err
-	}
-	resp.Limit = limit
-	return resp, nil
+	return s.queryRows(ctx, fmt.Sprintf("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT %d", limit))
 }
 
 func (s *adminService) RiskAlerts(ctx context.Context, limit int) (models.TableRowsResponse, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	resp, err := s.queryRows(ctx, fmt.Sprintf("SELECT * FROM risk_alerts ORDER BY created_at DESC LIMIT %d", limit))
-	if err != nil {
-		return models.TableRowsResponse{}, err
+	return s.queryRows(ctx, fmt.Sprintf("SELECT * FROM risk_alerts ORDER BY created_at DESC LIMIT %d", limit))
+}
+
+func (s *adminService) SystemHealth(ctx context.Context) (models.SystemHealthResponse, error) {
+	result := models.SystemHealthResponse{
+		Database: "ok",
+		Services: []models.ServiceHealth{
+			{Name: "user-service", URL: "http://user-service:8080/health"},
+			{Name: "transaction-validation-service", URL: "http://transaction-validation-service:8081/health"},
+			{Name: "gas-info-service", URL: "http://gas-info-service:8082/health"},
+			{Name: "merchant-service", URL: "http://merchant-service:8083/health"},
+			{Name: "wallet-service", URL: "http://wallet-service:8084/health"},
+			{Name: "transaction-core-service", URL: "http://transaction-core-service:8085/health"},
+			{Name: "kyc-service", URL: "http://kyc-service:8086/health"},
+			{Name: "admin-service", URL: "local", Status: "ok"},
+		},
 	}
-	resp.Limit = limit
-	return resp, nil
+	if err := s.db.PingContext(ctx); err != nil {
+		result.Database = "down"
+		return result, err
+	}
+
+	client := &http.Client{Timeout: 1500 * time.Millisecond}
+	for i := range result.Services {
+		service := &result.Services[i]
+		if service.URL == "local" {
+			continue
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, service.URL, nil)
+		if err != nil {
+			service.Status = "down"
+			service.Error = err.Error()
+			continue
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			service.Status = "down"
+			service.Error = err.Error()
+			continue
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			service.Status = "ok"
+			continue
+		}
+		service.Status = "down"
+		service.Error = fmt.Sprintf("status %d", resp.StatusCode)
+	}
+	return result, nil
 }
 
 func (s *adminService) CreateDemoInvoice(ctx context.Context) (map[string]any, error) {

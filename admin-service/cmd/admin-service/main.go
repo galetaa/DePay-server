@@ -42,6 +42,7 @@ func main() {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(middleware.RequestIDMiddleware())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
 	router.Use(observability.Middleware("admin-service"))
@@ -49,22 +50,26 @@ func main() {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
-	router.GET("/metrics", observability.Handler())
+	router.GET("/metrics", observability.DatabaseHandler(conn))
 
 	api := router.Group("/api")
-	secured := api.Group("")
-	secured.Use(middleware.JWTAuthMiddleware(), middleware.RoleMiddleware("admin"))
-	secured.GET("/admin/tables", adminCtrl.ListTables)
-	secured.GET("/admin/tables/:table_name", adminCtrl.GetTableRows)
-	secured.POST("/admin/functions/:function_name/execute", adminCtrl.ExecuteFunction)
-	secured.GET("/admin/audit-logs", adminCtrl.AuditLogs)
-	secured.GET("/admin/risk-alerts", adminCtrl.RiskAlerts)
-	secured.GET("/analytics/store-turnover", adminCtrl.StoreTurnover)
-	secured.GET("/analytics/transaction-statuses", adminCtrl.TransactionStatuses)
-	secured.GET("/analytics/failed-transactions", adminCtrl.FailedTransactions)
-	secured.GET("/analytics/rpc-health", adminCtrl.RPCHealth)
-	secured.POST("/admin/demo/invoices", adminCtrl.CreateDemoInvoice)
-	secured.POST("/admin/demo/payments", adminCtrl.SubmitDemoPayment)
+	adminAPI := api.Group("/admin", middleware.ProductionRoleGate("admin"))
+	adminAPI.GET("/tables", adminCtrl.ListTables)
+	adminAPI.GET("/tables/:table_name", adminCtrl.GetTableRows)
+	adminAPI.POST("/functions/:function_name/execute", adminCtrl.ExecuteFunction)
+	adminAPI.GET("/audit-logs", adminCtrl.AuditLogs)
+	adminAPI.GET("/risk-alerts", adminCtrl.RiskAlerts)
+	adminAPI.GET("/system-health", adminCtrl.SystemHealth)
+
+	analyticsAPI := api.Group("/analytics", middleware.ProductionRoleGate("admin", "compliance"))
+	analyticsAPI.GET("/store-turnover", adminCtrl.StoreTurnover)
+	analyticsAPI.GET("/transaction-statuses", adminCtrl.TransactionStatuses)
+	analyticsAPI.GET("/failed-transactions", adminCtrl.FailedTransactions)
+	analyticsAPI.GET("/rpc-health", adminCtrl.RPCHealth)
+
+	demoAPI := adminAPI.Group("/demo", middleware.DemoEndpointGuard())
+	demoAPI.POST("/invoices", adminCtrl.CreateDemoInvoice)
+	demoAPI.POST("/payments", adminCtrl.SubmitDemoPayment)
 
 	port := os.Getenv("PORT")
 	if port == "" {
