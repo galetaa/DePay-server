@@ -14,6 +14,7 @@ This document lists the endpoints that currently exist in the repository. For ma
 - `POST /api/user/register`
 - `POST /api/user/login`
 - `POST /api/user/refresh-token`
+- `POST /api/user/logout`
 - `GET /api/user/me`
 - `PUT /api/user/me`
 - `POST /api/user/kyc`
@@ -40,9 +41,14 @@ Protected `/api/user/*` profile/KYC routes use JWT middleware.
 - `GET /api/merchant/terminals`
 - `POST /api/merchant/webhooks`
 - `GET /api/merchant/webhooks`
+- `GET /api/merchant/webhooks/:webhook_id`
+- `POST /api/merchant/webhooks/:webhook_id/test`
 - `DELETE /api/merchant/webhooks/:webhook_id`
+- `POST /api/merchant/api-keys`
+- `GET /api/merchant/api-keys`
+- `DELETE /api/merchant/api-keys/:key_id`
 
-Protected merchant routes use JWT middleware. Invoice, terminal and webhook creation require merchant verification in service logic.
+Protected merchant routes use JWT middleware. Invoice, terminal, webhook and API-key creation require merchant verification in service logic. API keys return the raw secret once, persist only a hash, support scopes and can be revoked. Webhook deliveries use `X-DePay-Event`, `X-DePay-Delivery`, `X-DePay-Timestamp` and `X-DePay-Signature`; retryable failures are scheduled as `retry_scheduled` before moving to `dead_letter`.
 
 ## Wallet Service `:8084`
 
@@ -83,7 +89,7 @@ Supported lifecycle:
 - `created/submitted/validated/broadcasted -> failed` where service logic marks failure
 - `created/submitted -> cancelled`
 
-The PostgreSQL trigger enforces this lifecycle for persisted transactions.
+Duplicate same-status requests are treated as idempotent no-ops. The service-level state machine validates transitions before repository writes, and the PostgreSQL trigger remains a persisted safety guard.
 
 ## Transaction Validation Service `:8081`
 
@@ -123,6 +129,7 @@ These endpoints are for coursework/admin/demo usage. They are intentionally trea
 - `POST /api/admin/functions/:function_name/execute`
 - `GET /api/admin/audit-logs`
 - `GET /api/admin/risk-alerts`
+- `GET /api/admin/system-health`
 - `GET /api/analytics/store-turnover`
 - `GET /api/analytics/transaction-statuses`
 - `GET /api/analytics/failed-transactions`
@@ -132,8 +139,23 @@ These endpoints are for coursework/admin/demo usage. They are intentionally trea
 
 ## Web UI `:5173`
 
+- `/login`
+- `/user/dashboard`
+- `/user/profile`
+- `/user/kyc`
+- `/user/wallets`
+- `/user/transactions`
+- `/merchant/dashboard`
+- `/merchant/invoices`
+- `/merchant/webhooks`
+- `/merchant/terminals`
+- `/merchant/analytics`
+- `/compliance/kyc`
+- `/compliance/merchant-verifications`
+- `/compliance/risk-alerts`
+- `/compliance/blacklist`
+- `/admin/system-health`
 - `/admin/tables`
 - `/admin/functions`
 - `/admin/analytics`
 - `/admin/demo`
-
