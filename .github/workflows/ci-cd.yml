@@ -2,19 +2,23 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+
+env:
+  JWT_SECRET: ci_secret
+  SKIP_RABBITMQ: "true"
 
 jobs:
-  build_and_test:
-    name: Build and Test Services
+  go-tests:
+    name: Go Tests
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         service:
+          - shared
           - user-service
           - wallet-service
           - transaction-core-service
@@ -24,17 +28,122 @@ jobs:
           - merchant-service
           - admin-service
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v3
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: "1.24"
+          cache-dependency-path: ${{ matrix.service }}/go.sum
 
-      - name: Build and Test ${{ matrix.service }}
+      - name: Test ${{ matrix.service }}
         working-directory: ./${{ matrix.service }}
+        run: go test ./...
+
+  web:
+    name: Web Tests And Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Run web tests
+        working-directory: apps/web
+        run: npm test
+
+      - name: Build web
+        working-directory: apps/web
+        run: npm run build
+
+  sql-tests:
+    name: SQL Tests
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://myuser:mypassword@localhost:5432/mydatabase?sslmode=disable
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: myuser
+          POSTGRES_PASSWORD: mypassword
+          POSTGRES_DB: mydatabase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U myuser -d mydatabase"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Install tools
         run: |
-          go mod download
-          CGO_ENABLED=0 go build -o app ./cmd/${{ matrix.service }}/main.go
-          go test -v ./...
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run migrations and seed
+        run: |
+          migrate -path database/migrations -database "$DATABASE_URL" up
+          psql "$DATABASE_URL" -f database/seeds/seed_coursework.sql
+
+      - name: Run SQL tests
+        run: make sql-test
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image compose stack
+        run: make docker-build
+
+  compose-smoke:
+    name: Compose Smoke
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://myuser:mypassword@localhost:5432/mydatabase?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Install migrate
+        run: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+      - name: Start infrastructure
+        run: make up
+      - name: Prepare database
+        run: make wait-db migrate-up seed
+      - name: Build images
+        run: make docker-build
+      - name: Build and start image services
+        run: make image-up
+      - name: Smoke health endpoints
+        run: |
+          for port in 8080 8081 8082 8083 8084 8085 8086 8090; do
+            for i in $(seq 1 60); do
+              curl -fsS "http://localhost:${port}/health" && break
+              sleep 2
+            done
+          done
+
+  k8s-validate:
+    name: Kubernetes Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Offline manifest YAML validation
+        run: make k8s-client-validate

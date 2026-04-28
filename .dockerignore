@@ -1,0 +1,11 @@
+.git
+.github
+.idea
+.DS_Store
+**/.DS_Store
+**/node_modules
+**/dist
+**/.vite
+**/.env
+pgdata
+tmp

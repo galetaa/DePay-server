@@ -3,7 +3,7 @@ KIND ?= $(shell command -v kind 2>/dev/null || printf "%s/bin/kind" "$$(go env G
 KIND_CLUSTER ?= depay-kubectl-check
 SERVICES := user-service wallet-service transaction-core-service transaction-validation-service gas-info-service kyc-service merchant-service admin-service
 
-.PHONY: up backend-up web-up gateway-up observability-up secrets-up full-up prod-like-up dev-ready down reset-local-data wait-db migrate-up migrate-down seed sql-test test test-go web-dev web-build web-test kind-install kind-up kind-down k8s-validate k8s-dry-run
+.PHONY: up backend-up web-up gateway-up observability-up secrets-up full-up prod-like-up docker-build image-up image-down dev-ready down reset-local-data wait-db migrate-up migrate-down seed sql-test test test-go web-dev web-build web-test kind-install kind-up kind-down k8s-validate k8s-dry-run k8s-client-validate
 
 up:
 	docker compose up -d postgres redis rabbitmq
@@ -28,6 +28,23 @@ full-up:
 
 prod-like-up:
 	docker compose --profile backend --profile web --profile gateway --profile observability --profile secrets up -d
+
+docker-build:
+	docker compose -f docker-compose.images.yml build user-service
+	docker compose -f docker-compose.images.yml build wallet-service
+	docker compose -f docker-compose.images.yml build transaction-core-service
+	docker compose -f docker-compose.images.yml build transaction-validation-service
+	docker compose -f docker-compose.images.yml build gas-info-service
+	docker compose -f docker-compose.images.yml build kyc-service
+	docker compose -f docker-compose.images.yml build merchant-service
+	docker compose -f docker-compose.images.yml build admin-service
+	docker compose -f docker-compose.images.yml build web
+
+image-up: up
+	docker compose -f docker-compose.images.yml up -d
+
+image-down:
+	docker compose -f docker-compose.images.yml down
 
 dev-ready: up wait-db migrate-up seed backend-up
 
@@ -91,5 +108,8 @@ kind-down:
 
 k8s-validate:
 	kubectl apply --dry-run=server --validate=strict -f k8s -o name
+
+k8s-client-validate:
+	ruby -e 'require "yaml"; ARGV.each { |path| YAML.load_stream(File.read(path)); puts path }' k8s/*.yaml
 
 k8s-dry-run: k8s-validate

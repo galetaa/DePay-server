@@ -1,0 +1,127 @@
+services:
+  user-service:
+    image: depay/user-service:local
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8080
+    ports:
+      - "8080:8080"
+
+  transaction-validation-service:
+    image: depay/transaction-validation-service:local
+    build:
+      context: .
+      dockerfile: transaction-validation-service/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8081
+    ports:
+      - "8081:8081"
+
+  gas-info-service:
+    image: depay/gas-info-service:local
+    build:
+      context: .
+      dockerfile: gas-info-service/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      GAS_PROVIDER_URL: ${GAS_PROVIDER_URL:-}
+      PORT: 8082
+    ports:
+      - "8082:8082"
+
+  merchant-service:
+    image: depay/merchant-service:local
+    build:
+      context: .
+      dockerfile: merchant-service/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8083
+    ports:
+      - "8083:8083"
+
+  wallet-service:
+    image: depay/wallet-service:local
+    build:
+      context: .
+      dockerfile: wallet-service/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      WALLET_BALANCE_RPC_URL: ${WALLET_BALANCE_RPC_URL:-}
+      WALLET_BALANCE_RPC_TIMEOUT_MS: ${WALLET_BALANCE_RPC_TIMEOUT_MS:-10000}
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8084
+    ports:
+      - "8084:8084"
+
+  transaction-core-service:
+    image: depay/transaction-core-service:local
+    build:
+      context: .
+      dockerfile: transaction-core-service/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-myuser}:${RABBITMQ_DEFAULT_PASS:-mypassword}@rabbitmq:5672/
+      SKIP_RABBITMQ: ${SKIP_RABBITMQ:-false}
+      BLOCKCHAIN_RPC_URL: ${BLOCKCHAIN_RPC_URL:-}
+      BLOCKCHAIN_RPC_TIMEOUT_MS: ${BLOCKCHAIN_RPC_TIMEOUT_MS:-10000}
+      WEBHOOK_DELIVERY_MODE: ${WEBHOOK_DELIVERY_MODE:-log}
+      WEBHOOK_DELIVERY_TIMEOUT_MS: ${WEBHOOK_DELIVERY_TIMEOUT_MS:-5000}
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8085
+    ports:
+      - "8085:8085"
+
+  kyc-service:
+    image: depay/kyc-service:local
+    build:
+      context: .
+      dockerfile: kyc-service/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      KYC_PROVIDER_URL: ${KYC_PROVIDER_URL:-}
+      KYC_PROVIDER_API_KEY: ${KYC_PROVIDER_API_KEY:-}
+      KYC_PROVIDER_TIMEOUT_MS: ${KYC_PROVIDER_TIMEOUT_MS:-5000}
+      PORT: 8086
+    ports:
+      - "8086:8086"
+
+  admin-service:
+    image: depay/admin-service:local
+    build:
+      context: .
+      dockerfile: admin-service/Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DEMO_ENDPOINTS_ENABLED: ${DEMO_ENDPOINTS_ENABLED:-false}
+      DATABASE_URL: postgres://${POSTGRES_USER:-myuser}:${POSTGRES_PASSWORD:-mypassword}@postgres:5432/${POSTGRES_DB:-mydatabase}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_local_dev}
+      PORT: 8090
+    ports:
+      - "8090:8090"
+
+  web:
+    image: depay/web:local
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8090}
+    ports:
+      - "5173:80"
