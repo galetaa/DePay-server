@@ -8,13 +8,9 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"shared/events"
@@ -122,10 +118,6 @@ func (d *PostgresWebhookDispatcher) deliver(ctx context.Context, target webhookT
 	if d.mode != "http" {
 		return d.markDelivered(ctx, target, deliveryID, 204, "webhook delivery log mode")
 	}
-	if err := validateWebhookTarget(ctx, target.URL); err != nil {
-		_ = d.markFailed(ctx, target, deliveryID, 0, "", err.Error())
-		return err
-	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.URL, bytes.NewReader(body))
 	if err != nil {
@@ -135,7 +127,9 @@ func (d *PostgresWebhookDispatcher) deliver(ctx context.Context, target webhookT
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-DePay-Event", eventType)
 	req.Header.Set("X-DePay-Delivery", deliveryID)
-	req.Header.Set("X-DePay-Signature", signPayload(body, target.SecretHash))
+	timestamp := fmt.Sprint(time.Now().UTC().Unix())
+	req.Header.Set("X-DePay-Timestamp", timestamp)
+	req.Header.Set("X-DePay-Signature", signPayload(timestamp, body, target.SecretHash))
 
 	resp, err := d.client.Do(req)
 	if err != nil {
@@ -175,6 +169,9 @@ func (d *PostgresWebhookDispatcher) markDelivered(ctx context.Context, target we
 		    attempts = attempts + 1,
 		    response_status = NULLIF($2, 0),
 		    response_body = NULLIF($3, ''),
+		    error_message = NULL,
+		    last_attempt_at = now(),
+		    next_attempt_at = NULL,
 		    delivered_at = now()
 		WHERE webhook_delivery_id = $1::bigint
 	`, deliveryID, status, body); err != nil {
@@ -190,15 +187,28 @@ func (d *PostgresWebhookDispatcher) markDelivered(ctx context.Context, target we
 }
 
 func (d *PostgresWebhookDispatcher) markFailed(ctx context.Context, target webhookTarget, deliveryID string, status int, body string, message string) error {
+	var currentAttempts int
+	if err := d.db.QueryRowContext(ctx, `
+		SELECT attempts
+		FROM merchant_webhook_deliveries
+		WHERE webhook_delivery_id = $1::bigint
+	`, deliveryID).Scan(&currentAttempts); err != nil {
+		return err
+	}
+
+	attempts := currentAttempts + 1
+	deliveryStatus, nextAttemptAt := deliveryFailureState(attempts, status)
 	if _, err := d.db.ExecContext(ctx, `
 		UPDATE merchant_webhook_deliveries
-		SET status = 'failed',
-		    attempts = attempts + 1,
+		SET status = $5,
+		    attempts = $6,
 		    response_status = NULLIF($2, 0),
 		    response_body = NULLIF($3, ''),
-		    error_message = NULLIF($4, '')
+		    error_message = NULLIF($4, ''),
+		    last_attempt_at = now(),
+		    next_attempt_at = $7
 		WHERE webhook_delivery_id = $1::bigint
-	`, deliveryID, status, body, message); err != nil {
+	`, deliveryID, status, body, message, deliveryStatus, attempts, nextAttemptAt); err != nil {
 		return err
 	}
 	_, err := d.db.ExecContext(ctx, `
@@ -211,8 +221,40 @@ func (d *PostgresWebhookDispatcher) markFailed(ctx context.Context, target webho
 	return err
 }
 
-func signPayload(body []byte, secret string) string {
+func deliveryFailureState(attempts int, responseStatus int) (string, sql.NullTime) {
+	if !shouldRetryWebhook(responseStatus) {
+		return "failed", sql.NullTime{}
+	}
+	delay, ok := webhookRetryDelay(attempts)
+	if !ok {
+		return "dead_letter", sql.NullTime{}
+	}
+	return "retry_scheduled", sql.NullTime{Time: time.Now().UTC().Add(delay), Valid: true}
+}
+
+func shouldRetryWebhook(responseStatus int) bool {
+	return responseStatus == 0 || responseStatus == http.StatusTooManyRequests || responseStatus == http.StatusRequestTimeout || responseStatus >= 500
+}
+
+func webhookRetryDelay(attempts int) (time.Duration, bool) {
+	switch attempts {
+	case 1:
+		return 30 * time.Second, true
+	case 2:
+		return 2 * time.Minute, true
+	case 3:
+		return 10 * time.Minute, true
+	case 4:
+		return 30 * time.Minute, true
+	default:
+		return 0, false
+	}
+}
+
+func signPayload(timestamp string, body []byte, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(timestamp))
+	mac.Write([]byte("."))
 	mac.Write(body)
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
@@ -223,47 +265,3 @@ type webhookTarget struct {
 	URL        string
 	SecretHash string
 }
-
-func validateWebhookTarget(ctx context.Context, rawURL string) error {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid webhook url: %w", err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return errors.New("webhook url scheme must be http or https")
-	}
-	host := parsed.Hostname()
-	if host == "" {
-		return errors.New("webhook url host is required")
-	}
-	lowerHost := strings.ToLower(host)
-	if lowerHost == "localhost" || strings.HasSuffix(lowerHost, ".localhost") {
-		return errors.New("webhook url host is not allowed")
-	}
-
-	resolver := net.DefaultResolver
-	ips, err := resolver.LookupIP(ctx, "ip", host)
-	if err != nil {
-		return fmt.Errorf("unable to resolve webhook host: %w", err)
-	}
-	for _, ip := range ips {
-		if isRestrictedIP(ip) {
-			return fmt.Errorf("webhook target resolves to restricted address %s", ip.String())
-		}
-	}
-	return nil
-}
-
-func isRestrictedIP(ip net.IP) bool {
-	if ip == nil {
-		return true
-	}
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
-		return true
-	}
-	if ipv4 := ip.To4(); ipv4 != nil && ipv4[0] == 169 && ipv4[1] == 254 {
-		return true
-	}
-	return false
-}
-

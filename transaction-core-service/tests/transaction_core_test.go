@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,24 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
+
+type recordingDispatcher struct {
+	events []string
+}
+
+func (d *recordingDispatcher) Dispatch(_ context.Context, eventType string, _ models.Transaction) {
+	d.events = append(d.events, eventType)
+}
+
+func countEvents(events []string, eventType string) int {
+	count := 0
+	for _, event := range events {
+		if event == eventType {
+			count++
+		}
+	}
+	return count
+}
 
 func setupTransactionRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -163,6 +182,138 @@ func TestTransactionLifecycleRejectsInvalidTransitions(t *testing.T) {
 	}
 
 	req, _ = http.NewRequest("POST", "/api/transaction/tx-invalid-flow/submit", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusConflict, w.Code)
+}
+
+func TestTransactionLifecycleDuplicateSubmitIsIdempotent(t *testing.T) {
+	t.Setenv("SKIP_RABBITMQ", "true")
+
+	repo := repositories.NewTransactionRepository()
+	dispatcher := &recordingDispatcher{}
+	svc := services.NewTransactionService(repo, services.WithWebhookDispatcher(dispatcher))
+
+	tx := models.Transaction{
+		TransactionID: "tx-idempotent-submit",
+		StoreID:       "store123",
+		Timestamp:     time.Now(),
+		Amount:        "1000000000000000000",
+		Status:        "created",
+	}
+	assert.NoError(t, svc.Initiate(tx))
+	assert.NoError(t, svc.UpdateStatus(tx.TransactionID, "submitted", ""))
+	assert.NoError(t, svc.UpdateStatus(tx.TransactionID, "submitted", ""))
+
+	current, err := svc.Get(tx.TransactionID)
+	assert.NoError(t, err)
+	assert.Equal(t, "submitted", current.Status)
+	assert.Equal(t, []string{"transaction.created", "transaction.submitted"}, dispatcher.events)
+}
+
+func TestTransactionLifecycleDuplicateInitiateIsIdempotent(t *testing.T) {
+	t.Setenv("SKIP_RABBITMQ", "true")
+
+	repo := repositories.NewTransactionRepository()
+	dispatcher := &recordingDispatcher{}
+	svc := services.NewTransactionService(repo, services.WithWebhookDispatcher(dispatcher))
+
+	tx := models.Transaction{
+		TransactionID: "tx-idempotent-initiate",
+		StoreID:       "store123",
+		Timestamp:     time.Now(),
+		Amount:        "1000000000000000000",
+		Status:        "created",
+	}
+	assert.NoError(t, svc.Initiate(tx))
+	assert.NoError(t, svc.Initiate(tx))
+
+	current, err := svc.Get(tx.TransactionID)
+	assert.NoError(t, err)
+	assert.Equal(t, "created", current.Status)
+	assert.Equal(t, 1, countEvents(dispatcher.events, "transaction.created"))
+}
+
+func TestTransactionLifecycleFailedValidationIsTerminal(t *testing.T) {
+	t.Setenv("SKIP_RABBITMQ", "true")
+
+	repo := repositories.NewTransactionRepository()
+	dispatcher := &recordingDispatcher{}
+	svc := services.NewTransactionService(repo, services.WithWebhookDispatcher(dispatcher))
+
+	tx := models.Transaction{
+		TransactionID: "tx-failed-validation",
+		StoreID:       "store123",
+		Timestamp:     time.Now(),
+		Amount:        "1000000000000000000",
+		Status:        "created",
+	}
+	assert.NoError(t, svc.Initiate(tx))
+	assert.NoError(t, svc.UpdateStatus(tx.TransactionID, "submitted", ""))
+	assert.NoError(t, svc.UpdateStatus(tx.TransactionID, "failed", "risk validation failed"))
+	assert.Error(t, svc.UpdateStatus(tx.TransactionID, "validated", ""))
+
+	current, err := svc.Get(tx.TransactionID)
+	assert.NoError(t, err)
+	assert.Equal(t, "failed", current.Status)
+	assert.Equal(t, "risk validation failed", current.FailureReason)
+	assert.Contains(t, dispatcher.events, "transaction.failed")
+}
+
+func TestTransactionLifecycleTerminalEventsAreDispatchedOnce(t *testing.T) {
+	t.Setenv("SKIP_RABBITMQ", "true")
+
+	repo := repositories.NewTransactionRepository()
+	dispatcher := &recordingDispatcher{}
+	svc := services.NewTransactionService(repo, services.WithWebhookDispatcher(dispatcher))
+
+	tx := models.Transaction{
+		TransactionID: "tx-cancel-event",
+		StoreID:       "store123",
+		Timestamp:     time.Now(),
+		Amount:        "1000000000000000000",
+		Status:        "created",
+	}
+	assert.NoError(t, svc.Initiate(tx))
+	assert.NoError(t, svc.UpdateStatus(tx.TransactionID, "cancelled", "user cancelled"))
+	assert.NoError(t, svc.UpdateStatus(tx.TransactionID, "cancelled", "user cancelled"))
+
+	current, err := svc.Get(tx.TransactionID)
+	assert.NoError(t, err)
+	assert.Equal(t, "cancelled", current.Status)
+	assert.Equal(t, 1, countEvents(dispatcher.events, "transaction.cancelled"))
+}
+
+func TestTransactionLifecycleCancelFlowProtectsTerminalStatus(t *testing.T) {
+	t.Setenv("SKIP_RABBITMQ", "true")
+
+	router := setupTransactionRouter()
+	tx := models.Transaction{
+		TransactionID: "tx-cancel-flow",
+		StoreID:       "store123",
+		Timestamp:     time.Now(),
+		Amount:        "1000000000000000000",
+	}
+	jsonValue, err := json.Marshal(tx)
+	assert.NoError(t, err)
+
+	req, _ := http.NewRequest("POST", "/transaction/initiate", bytes.NewBuffer(jsonValue))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	req, _ = http.NewRequest("POST", "/api/transaction/tx-cancel-flow/submit", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	req, _ = http.NewRequest("POST", "/api/transaction/tx-cancel-flow/cancel", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	req, _ = http.NewRequest("POST", "/api/transaction/tx-cancel-flow/validate", nil)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusConflict, w.Code)

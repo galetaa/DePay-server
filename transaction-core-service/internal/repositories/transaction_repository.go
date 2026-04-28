@@ -92,7 +92,7 @@ func isValidStatusTransition(from string, to string) bool {
 	}
 	switch from {
 	case "created":
-		return to == "submitted" || to == "cancelled" || to == "failed"
+		return to == "submitted" || to == "cancelled"
 	case "submitted":
 		return to == "validated" || to == "cancelled" || to == "failed"
 	case "validated":
@@ -297,6 +297,17 @@ func (r *postgresTransactionRepo) Get(transactionID string) (*models.Transaction
 }
 
 func (r *postgresTransactionRepo) UpdateStatus(transactionID string, status string, failureReason string) error {
+	tx, err := r.Get(transactionID)
+	if err != nil {
+		return err
+	}
+	if _, err := validateTransactionTransitionForRepo(tx.Status, status); err != nil {
+		return err
+	}
+	if tx.Status == status {
+		return nil
+	}
+
 	result, err := r.db.Exec(`
 		UPDATE payment_transactions
 		SET status = $2,
@@ -313,6 +324,23 @@ func (r *postgresTransactionRepo) UpdateStatus(transactionID string, status stri
 	}
 	if rowsAffected == 0 {
 		return errors.New("transaction not found")
+	}
+	if status == "confirmed" {
+		if _, err := r.db.Exec(`
+			UPDATE payment_invoices
+			SET status = 'paid',
+			    paid_at = COALESCE(paid_at, now()),
+			    updated_at = now()
+			WHERE invoice_id = (
+				SELECT invoice_id
+				FROM payment_transactions
+				WHERE transaction_id::text = $1
+				   OR external_transaction_id = $1
+				LIMIT 1
+			)
+		`, transactionID); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -336,4 +364,14 @@ func (r *postgresTransactionRepo) MarkBroadcasted(transactionID string, blockcha
 		return errors.New("transaction not found")
 	}
 	return nil
+}
+
+func validateTransactionTransitionForRepo(from string, to string) (bool, error) {
+	if from == to {
+		return true, nil
+	}
+	if !isValidStatusTransition(from, to) {
+		return false, invalidStatusTransitionError(from, to)
+	}
+	return false, nil
 }

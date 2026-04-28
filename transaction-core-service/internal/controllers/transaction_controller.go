@@ -146,4 +146,3 @@ func statusCodeForTransactionError(err error) int {
 	}
 	return http.StatusInternalServerError
 }
-

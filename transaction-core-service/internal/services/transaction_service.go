@@ -103,6 +103,9 @@ func WithBlockchainBroadcaster(broadcaster BlockchainBroadcaster) Option {
 func (s *transactionService) Initiate(tx models.Transaction) error {
 	// Сохраняем транзакцию в репозитории.
 	if err := s.repo.Save(tx); err != nil {
+		if _, getErr := s.repo.Get(tx.TransactionID); getErr == nil {
+			return nil
+		}
 		return err
 	}
 	s.dispatch("transaction.created", tx)
@@ -139,12 +142,23 @@ func (s *transactionService) Get(transactionID string) (*models.Transaction, err
 }
 
 func (s *transactionService) UpdateStatus(transactionID string, status string, failureReason string) error {
+	current, err := s.repo.Get(transactionID)
+	if err != nil {
+		return err
+	}
+	decision, err := validateTransactionTransition(current.Status, status)
+	if err != nil {
+		return err
+	}
+	if decision.Idempotent {
+		return nil
+	}
 	if err := s.repo.UpdateStatus(transactionID, status, failureReason); err != nil {
 		return err
 	}
 	tx, err := s.repo.Get(transactionID)
 	if err != nil {
-		return err
+		return nil
 	}
 	s.dispatch(eventTypeForStatus(status), *tx)
 	return nil
@@ -155,7 +169,10 @@ func (s *transactionService) Broadcast(transactionID string) (*models.Transactio
 	if err != nil {
 		return nil, err
 	}
-	if tx.Status != "validated" {
+	if tx.Status == "broadcasted" {
+		return tx, nil
+	}
+	if _, err := validateTransactionTransition(tx.Status, "broadcasted"); err != nil {
 		return nil, fmt.Errorf("transaction must be validated before broadcast, current status is %s", tx.Status)
 	}
 	result, err := s.broadcaster.Broadcast(context.Background(), *tx)
@@ -196,6 +213,8 @@ func eventTypeForStatus(status string) string {
 		return "transaction.confirmed"
 	case "failed":
 		return "transaction.failed"
+	case "cancelled":
+		return "transaction.cancelled"
 	default:
 		return ""
 	}
