@@ -49,4 +49,3 @@ func TestJWTAuthMiddlewareAllowsValidToken(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
-

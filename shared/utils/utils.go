@@ -1,15 +1,20 @@
 package utils
 
 import (
-	"errors"
 	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 )
 
+// JwtSecret используется для подписи JWT (замените на более безопасное хранение в продакшене)
+var JwtSecret = []byte(GetJWTSecret())
+
 func GetJWTSecret() string {
-	return os.Getenv("JWT_SECRET")
+	if secret := os.Getenv("JWT_SECRET"); secret != "" {
+		return secret
+	}
+	return "dev_secret_change_me"
 }
 
 // GenerateToken генерирует JWT для заданного userId с указанной длительностью
@@ -18,11 +23,6 @@ func GenerateToken(userId string, duration time.Duration) (string, error) {
 }
 
 func GenerateTokenWithRoles(userId string, roles []string, duration time.Duration) (string, error) {
-	secret := GetJWTSecret()
-	if secret == "" {
-		return "", errors.New("JWT_SECRET is required")
-	}
-
 	claims := jwt.MapClaims{
 		"sub":   userId,
 		"roles": roles,
@@ -31,5 +31,5 @@ func GenerateTokenWithRoles(userId string, roles []string, duration time.Duratio
 		"iat":   time.Now().Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(secret))
+	return token.SignedString([]byte(GetJWTSecret()))
 }

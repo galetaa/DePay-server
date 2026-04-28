@@ -5,7 +5,7 @@ import (
 )
 
 // Logger – глобальный логгер, который можно использовать во всех сервисах
-var Logger *zap.Logger
+var Logger = zap.NewNop()
 
 // InitLogger инициализирует логгер в production режиме
 func InitLogger() error {
@@ -19,6 +19,9 @@ func InitLogger() error {
 
 // Sync завершает работу логгера (важно при завершении приложения)
 func Sync() {
+	if Logger == nil {
+		return
+	}
 	err := Logger.Sync()
 	if err != nil {
 		return

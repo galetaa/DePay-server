@@ -24,11 +24,6 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
 			return
 		}
-		secret := utils.GetJWTSecret()
-		if secret == "" {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "JWT_SECRET is not configured"})
-			return
-		}
 		tokenString := parts[1]
 
 		// Здесь можно добавить проверку алгоритма, ключа и т.д.
@@ -36,7 +31,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 			}
-			return []byte(secret), nil
+			return []byte(utils.GetJWTSecret()), nil
 		})
 
 		if err != nil || !token.Valid {
@@ -53,7 +48,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 func RoleMiddleware(requiredRoles ...string) gin.HandlerFunc {
 	required := make(map[string]struct{}, len(requiredRoles))
 	for _, role := range requiredRoles {
-		required[role] = struct{}{}
+		required[normalizeRole(role)] = struct{}{}
 	}
 
 	return func(c *gin.Context) {
@@ -80,12 +75,21 @@ func RoleMiddleware(requiredRoles ...string) gin.HandlerFunc {
 			if !ok {
 				continue
 			}
-			if _, allowed := required[role]; allowed {
+			if _, allowed := required[normalizeRole(role)]; allowed {
 				c.Next()
 				return
 			}
 		}
 
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "insufficient role"})
+	}
+}
+
+func normalizeRole(role string) string {
+	switch role {
+	case "compliance_operator":
+		return "compliance"
+	default:
+		return role
 	}
 }

@@ -41,6 +41,10 @@ func HashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func NewOpaqueToken(size int) (string, error) {
+	return randomToken(size)
+}
+
 func randomToken(size int) (string, error) {
 	buf := make([]byte, size)
 	if _, err := rand.Read(buf); err != nil {
