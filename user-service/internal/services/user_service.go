@@ -16,7 +16,8 @@ import (
 type UserService interface {
 	Register(req models.RegisterRequest) (*models.User, error)
 	Login(req models.LoginRequest) (*models.User, error)
-	RefreshToken(token string) (string, error)
+	RefreshToken(token string) (auth.TokenPair, error)
+	Logout(token string) error
 	GetMe(userID string) (*models.User, error)
 	UpdateMe(userID string, req models.UpdateProfileRequest) (*models.User, error)
 	SubmitKYC(userID string, req models.SubmitKYCRequest) error
@@ -69,16 +70,25 @@ func (s *userService) Login(req models.LoginRequest) (*models.User, error) {
 	return user, nil
 }
 
-func (s *userService) RefreshToken(token string) (string, error) {
-	user, err := s.repo.GetByRefreshTokenHash(context.Background(), auth.HashToken(token))
+func (s *userService) RefreshToken(token string) (auth.TokenPair, error) {
+	ctx := context.Background()
+	tokenHash := auth.HashToken(token)
+	user, err := s.repo.GetByRefreshTokenHash(ctx, tokenHash)
 	if err != nil {
-		return "", err
+		return auth.TokenPair{}, err
+	}
+	if err := s.repo.RevokeRefreshToken(ctx, tokenHash); err != nil {
+		return auth.TokenPair{}, err
 	}
 	pair, err := s.IssueTokenPair(user)
 	if err != nil {
-		return "", err
+		return auth.TokenPair{}, err
 	}
-	return pair.AccessToken, nil
+	return pair, nil
+}
+
+func (s *userService) Logout(token string) error {
+	return s.repo.RevokeRefreshToken(context.Background(), auth.HashToken(token))
 }
 
 func (s *userService) GetMe(userID string) (*models.User, error) {
@@ -102,7 +112,7 @@ func (s *userService) IssueTokenPair(user *models.User) (auth.TokenPair, error) 
 	if len(roles) == 0 {
 		roles = []string{"user"}
 	}
-	pair, err := auth.NewTokenPair(user.ID, roles, 24*time.Hour, 30*24*time.Hour)
+	pair, err := auth.NewTokenPair(user.ID, roles, 15*time.Minute, 30*24*time.Hour)
 	if err != nil {
 		return auth.TokenPair{}, err
 	}

@@ -30,13 +30,13 @@ func setupRouter() *gin.Engine {
 	router.POST("/user/register", userCtrl.Register)
 	router.POST("/user/login", userCtrl.Login)
 	router.POST("/user/refresh-token", userCtrl.RefreshToken)
+	router.POST("/user/logout", userCtrl.Logout)
 
 	return router
 }
 
 // TestHealthEndpoint проверяет работу эндпоинта /health
 func TestHealthEndpoint(t *testing.T) {
-	t.Setenv("JWT_SECRET", "test-secret")
 	router := setupRouter()
 
 	req, _ := http.NewRequest("GET", "/health", nil)
@@ -53,7 +53,6 @@ func TestHealthEndpoint(t *testing.T) {
 
 // TestRegisterEndpoint проверяет регистрацию нового пользователя
 func TestRegisterEndpoint(t *testing.T) {
-	t.Setenv("JWT_SECRET", "test-secret")
 	router := setupRouter()
 
 	reqBody := map[string]string{
@@ -75,4 +74,78 @@ func TestRegisterEndpoint(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, resp["user"], "Response should contain a user object")
 	assert.NotNil(t, resp["token"], "Response should contain a token")
+}
+
+func TestRefreshTokenRotatesAndRevokesOldToken(t *testing.T) {
+	router := setupRouter()
+
+	reqBody := map[string]string{
+		"email":      "rotate@example.com",
+		"first_name": "Rhea",
+		"last_name":  "Token",
+		"password":   "password123",
+	}
+	jsonValue, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", "/user/register", bytes.NewBuffer(jsonValue))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var registerResp map[string]interface{}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &registerResp))
+	oldRefresh := registerResp["refresh_token"].(string)
+
+	refreshBody, _ := json.Marshal(map[string]string{"token": oldRefresh})
+	req, _ = http.NewRequest("POST", "/user/refresh-token", bytes.NewBuffer(refreshBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var refreshResp map[string]interface{}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &refreshResp))
+	assert.NotEmpty(t, refreshResp["token"])
+	assert.NotEmpty(t, refreshResp["refresh_token"])
+	assert.NotEqual(t, oldRefresh, refreshResp["refresh_token"])
+
+	req, _ = http.NewRequest("POST", "/user/refresh-token", bytes.NewBuffer(refreshBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestLogoutRevokesRefreshToken(t *testing.T) {
+	router := setupRouter()
+
+	reqBody := map[string]string{
+		"email":      "logout@example.com",
+		"first_name": "Lora",
+		"last_name":  "Out",
+		"password":   "password123",
+	}
+	jsonValue, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", "/user/register", bytes.NewBuffer(jsonValue))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var registerResp map[string]interface{}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &registerResp))
+	refresh := registerResp["refresh_token"].(string)
+
+	body, _ := json.Marshal(map[string]string{"token": refresh})
+	req, _ = http.NewRequest("POST", "/user/logout", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNoContent, w.Code)
+
+	req, _ = http.NewRequest("POST", "/user/refresh-token", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

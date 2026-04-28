@@ -24,12 +24,19 @@ type UserRepository interface {
 	GetKYCStatus(ctx context.Context, userID string) (string, error)
 	SaveRefreshToken(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) error
 	GetByRefreshTokenHash(ctx context.Context, tokenHash string) (*models.User, error)
+	RevokeRefreshToken(ctx context.Context, tokenHash string) error
+}
+
+type refreshTokenRecord struct {
+	UserID    string
+	ExpiresAt time.Time
+	RevokedAt *time.Time
 }
 
 type userRepo struct {
 	users         map[string]*models.User
 	usersByID     map[string]*models.User
-	refreshTokens map[string]string
+	refreshTokens map[string]refreshTokenRecord
 	mu            sync.RWMutex
 	nextID        int64
 }
@@ -38,7 +45,7 @@ func NewUserRepository() UserRepository {
 	return &userRepo{
 		users:         make(map[string]*models.User),
 		usersByID:     make(map[string]*models.User),
-		refreshTokens: make(map[string]string),
+		refreshTokens: make(map[string]refreshTokenRecord),
 		nextID:        1,
 	}
 }
@@ -141,7 +148,7 @@ func (r *userRepo) SaveRefreshToken(ctx context.Context, userID string, tokenHas
 	if _, exists := r.usersByID[userID]; !exists {
 		return errors.New("user not found")
 	}
-	r.refreshTokens[tokenHash] = userID
+	r.refreshTokens[tokenHash] = refreshTokenRecord{UserID: userID, ExpiresAt: expiresAt}
 	return nil
 }
 
@@ -149,15 +156,29 @@ func (r *userRepo) GetByRefreshTokenHash(ctx context.Context, tokenHash string) 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	userID, exists := r.refreshTokens[tokenHash]
-	if !exists {
+	record, exists := r.refreshTokens[tokenHash]
+	if !exists || record.RevokedAt != nil || time.Now().UTC().After(record.ExpiresAt) {
 		return nil, errors.New("refresh token not found")
 	}
-	user, exists := r.usersByID[userID]
+	user, exists := r.usersByID[record.UserID]
 	if !exists {
 		return nil, errors.New("user not found")
 	}
 	return user, nil
+}
+
+func (r *userRepo) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	record, exists := r.refreshTokens[tokenHash]
+	if !exists || record.RevokedAt != nil {
+		return errors.New("refresh token not found")
+	}
+	now := time.Now().UTC()
+	record.RevokedAt = &now
+	r.refreshTokens[tokenHash] = record
+	return nil
 }
 
 type postgresUserRepo struct {
@@ -338,6 +359,26 @@ func (r *postgresUserRepo) GetByRefreshTokenHash(ctx context.Context, tokenHash 
 		return nil, err
 	}
 	return r.GetByID(ctx, userID)
+}
+
+func (r *postgresUserRepo) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1
+		  AND revoked_at IS NULL
+	`, tokenHash)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return errors.New("refresh token not found")
+	}
+	return nil
 }
 
 func RefreshTokenHash(token string) string {

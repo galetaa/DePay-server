@@ -53,6 +53,7 @@ func main() {
 	// Инициализируем Gin router
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(middleware.RequestIDMiddleware())
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandlerMiddleware())
 	router.Use(observability.Middleware("user-service"))
@@ -67,12 +68,14 @@ func main() {
 	router.POST("/user/register", userCtrl.Register)
 	router.POST("/user/login", userCtrl.Login)
 	router.POST("/user/refresh-token", userCtrl.RefreshToken)
+	router.POST("/user/logout", userCtrl.Logout)
 
 	api := router.Group("/api")
 	userAPI := api.Group("/user")
 	userAPI.POST("/register", userCtrl.Register)
 	userAPI.POST("/login", userCtrl.Login)
 	userAPI.POST("/refresh-token", userCtrl.RefreshToken)
+	userAPI.POST("/logout", userCtrl.Logout)
 	protectedUserAPI := userAPI.Group("")
 	protectedUserAPI.Use(middleware.JWTAuthMiddleware())
 	protectedUserAPI.GET("/me", userCtrl.Me)

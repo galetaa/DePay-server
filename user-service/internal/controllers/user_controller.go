@@ -82,13 +82,26 @@ func (uc *UserController) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	newToken, err := uc.service.RefreshToken(req.Token)
+	pair, err := uc.service.RefreshToken(req.Token)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": newToken})
+	c.JSON(http.StatusOK, gin.H{"token": pair.AccessToken, "refresh_token": pair.RefreshToken})
+}
+
+func (uc *UserController) Logout(c *gin.Context) {
+	var req models.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	if err := uc.service.Logout(req.Token); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (uc *UserController) Me(c *gin.Context) {
